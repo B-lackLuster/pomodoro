@@ -10,8 +10,7 @@ import 'state/providers.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  final store = SettingsStore(prefs);
-  final initial = store.load();
+  final initial = SettingsStore(prefs).load();
 
   final container = ProviderContainer(
     overrides: [
@@ -19,15 +18,17 @@ Future<void> main() async {
       initialSettingsProvider.overrideWithValue(initial),
     ],
   );
-  // 窗口/托盘/通知等平台服务必须在 runApp 之前就绪
-  await AppServices.instance.init(container);
 
+  // 先渲染界面，再初始化平台服务（窗口/托盘/通知/前台服务）。
+  // 任何平台服务失败都不再阻塞首帧（release 模式下未捕获异常会表现为黑屏）。
   runApp(
     UncontrolledProviderScope(
       container: container,
       child: const PomodoroApp(),
     ),
   );
+
+  await AppServices.instance.init(container);
 }
 
 const _tomatoSeed = Color(0xFFE53935);

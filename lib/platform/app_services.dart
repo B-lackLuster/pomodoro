@@ -80,29 +80,38 @@ class AppServices {
     _sound.enabled = _settings.soundEnabled;
     _notify.enabled = _settings.notificationsEnabled;
 
-    final desktop = container.read(desktopPlatformProvider);
+    // 每个平台服务独立兜底：任何一项失败都不影响应用其他功能
+    try {
+      await _notify.init();
+    } catch (_) {}
 
-    // 开机自启：注册应用信息，并把持久化状态与系统真实状态对齐
-    desktop.setupAutoStart(appName: 'pomodoro');
-    if (desktop.isAvailable) {
-      final actual = await desktop.isAutoStartEnabled();
-      if (actual != _settings.launchAtStartup) {
-        await container
-            .read(settingsProvider.notifier)
-            .syncLaunchAtStartup(actual);
+    try {
+      final desktop = container.read(desktopPlatformProvider);
+
+      // 开机自启：注册应用信息，并把持久化状态与系统真实状态对齐
+      desktop.setupAutoStart(appName: 'pomodoro');
+      if (desktop.isAvailable) {
+        final actual = await desktop.isAutoStartEnabled();
+        if (actual != _settings.launchAtStartup) {
+          await container
+              .read(settingsProvider.notifier)
+              .syncLaunchAtStartup(actual);
+        }
       }
-    }
+    } catch (_) {}
 
-    await desktop.initWindow(
-      closeToTrayEnabled: () => _settings.closeToTray,
-    );
-    await _notify.init();
-    await desktop.initTray(TrayActions(
-      onShow: showMainWindow,
-      onToggle: () => container.read(pomodoroProvider.notifier).toggle(),
-      onSkip: () => container.read(pomodoroProvider.notifier).skip(),
-      onQuit: quit,
-    ));
+    try {
+      final desktop = container.read(desktopPlatformProvider);
+      await desktop.initWindow(
+        closeToTrayEnabled: () => _settings.closeToTray,
+      );
+      await desktop.initTray(TrayActions(
+        onShow: showMainWindow,
+        onToggle: () => container.read(pomodoroProvider.notifier).toggle(),
+        onSkip: () => container.read(pomodoroProvider.notifier).skip(),
+        onQuit: quit,
+      ));
+    } catch (_) {}
 
     // 阶段完成 → 提示音 + 系统通知（手动跳过不提醒）
     _completionSub = container

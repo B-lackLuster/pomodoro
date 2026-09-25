@@ -25,6 +25,7 @@ class NotifyService {
     }
     try {
       const settings = InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         macOS: DarwinInitializationSettings(
           requestAlertPermission: true,
           // 声音统一由应用内 SoundService 播放，避免双重提示音

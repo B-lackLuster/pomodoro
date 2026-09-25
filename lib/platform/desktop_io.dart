@@ -32,6 +32,9 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
 
   @override
   Future<void> initWindow({required bool Function() closeToTrayEnabled}) async {
+    // Android 上没有窗口管理器（window_manager 未实现 Android 端），
+    // 调用会抛 MissingPluginException，必须在 isAvailable 之外直接跳过
+    if (!isAvailable) return;
     _closeToTrayEnabled = closeToTrayEnabled;
     await windowManager.ensureInitialized();
     const options = WindowOptions(
