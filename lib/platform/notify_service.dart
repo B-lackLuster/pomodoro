@@ -40,6 +40,15 @@ class NotifyService {
       );
       final ok = await _plugin.initialize(settings: settings);
       _available = ok ?? false;
+      // Android 13+ 需要运行时请求通知权限
+      if (platform == TargetPlatform.android) {
+        try {
+          await _plugin
+              .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin>()
+              ?.requestNotificationsPermission();
+        } catch (_) {}
+      }
     } catch (_) {
       _available = false;
     }

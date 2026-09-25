@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show max;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +8,7 @@ import '../core/timer_engine.dart';
 import '../data/models.dart';
 import '../data/settings_store.dart';
 import '../state/providers.dart';
+import 'android_service.dart';
 import 'desktop.dart';
 import 'notify_service.dart';
 import 'sound_service.dart';
@@ -27,6 +29,48 @@ class AppServices {
   ProviderSubscription<StoredSettings>? _settingsSub;
 
   int _lastTraySecond = -1;
+
+  late final AndroidTimerService _androidService;
+  bool _androidForeground = false;
+
+  void _onTimerState(PomodoroState state) {
+    final second = state.remaining.inSeconds;
+    if (second == _lastTraySecond) return;
+    _lastTraySecond = second;
+    _container
+        ?.read(desktopPlatformProvider)
+        .updateTrayCountdown(
+          state.clockText,
+          '番茄时钟 · ${phaseLabel(state.phase)} 剩余 ${state.clockText}',
+        );
+    _updateAndroidNotification(state, second);
+  }
+
+  /// Android 通知：运行中显示倒计时；空闲时收起服务
+  void _updateAndroidNotification(PomodoroState state, int second) {
+    if (!_androidService.isAvailable) return;
+    if (state.isRunning) {
+      final title = '${state.clockText} · ${phaseLabel(state.phase)}';
+      final text = state.isBreak
+          ? '休息一下，别想工作'
+          : '第 ${state.focusInCycle % max(1, _settings.config.roundsBeforeLongBreak) + 1} 个番茄进行中';
+      if (_androidForeground) {
+        _androidService.update(title: title, text: text, running: true);
+      } else {
+        _androidForeground = true;
+        _androidService.start(title: title, text: text, running: true);
+      }
+    } else if (_androidForeground) {
+      // 暂停或空闲：保持常驻但文案更新；空闲时彻底收起
+      if (state.status == PomodoroStatus.paused) {
+        _androidService.update(
+            title: '${state.clockText} · 已暂停', text: '点「继续」接着计时', running: false);
+      } else {
+        _androidForeground = false;
+        _androidService.stop();
+      }
+    }
+  }
 
   StoredSettings get _settings =>
       _container?.read(settingsProvider) ?? const StoredSettings();
@@ -66,11 +110,19 @@ class AppServices {
         .completions
         .listen(_onPhaseCompleted);
 
-    // 计时状态 → 托盘倒计时文字
+    // Android：前台服务常驻通知（计时状态/秒数变化时更新）
+    _androidService = container.read(androidTimerServiceProvider);
+    await _androidService.init();
+    _androidService.onUserToggle =
+        () => container.read(pomodoroProvider.notifier).toggle();
+    _androidService.onUserSkip =
+        () => container.read(pomodoroProvider.notifier).skip();
+
+    // 计时状态 → 托盘倒计时文字 + Android 通知
     _stateSub = container
         .read(engineProvider)
         .stream
-        .listen(_updateTrayCountdown);
+        .listen(_onTimerState);
 
     // 设置变化 → 同步服务开关
     _settingsSub = container.listen<StoredSettings>(
@@ -116,18 +168,6 @@ class AppServices {
     );
     unawaited(container.read(appRepositoryProvider).addLog(log));
     container.read(dataVersionProvider.notifier).bump();
-  }
-
-  void _updateTrayCountdown(PomodoroState state) {
-    final second = state.remaining.inSeconds;
-    if (second == _lastTraySecond) return;
-    _lastTraySecond = second;
-    _container
-        ?.read(desktopPlatformProvider)
-        .updateTrayCountdown(
-          state.clockText,
-          '番茄时钟 · ${phaseLabel(state.phase)} 剩余 ${state.clockText}',
-        );
   }
 
   void showMainWindow() {

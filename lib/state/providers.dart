@@ -9,6 +9,7 @@ import '../data/app_repository.dart';
 import '../data/models.dart';
 import '../data/settings_store.dart';
 import '../data/stats_service.dart';
+import '../platform/android_service.dart';
 import '../platform/desktop.dart';
 
 /// 在 main() 中通过 ProviderScope overrides 注入
@@ -38,6 +39,11 @@ final dataVersionProvider =
 /// 桌面平台能力（web 上为空实现）
 final desktopPlatformProvider = Provider<DesktopPlatform>(
   (ref) => createDesktopPlatform(),
+);
+
+/// Android 前台服务（非 Android 为空实现）
+final androidTimerServiceProvider = Provider<AndroidTimerService>(
+  (ref) => createAndroidTimerService(),
 );
 
 /// 在 main() 中注入初始设置（已含跨天清零处理）
