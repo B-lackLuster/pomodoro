@@ -17,6 +17,15 @@ class SoundService {
     }
   }
 
+  /// 计时开始音：轻快短 blip
+  Future<void> playStart() async {
+    if (!_enabled) return;
+    try {
+      await _player.stop();
+      await _player.play(AssetSource('sound/start.wav'));
+    } catch (_) {}
+  }
+
   void dispose() {
     _player.dispose();
   }

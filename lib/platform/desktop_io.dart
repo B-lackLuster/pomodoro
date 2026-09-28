@@ -78,6 +78,33 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
   }
 
   @override
+  Future<void> enterMiniMode() async {
+    try {
+      await windowManager.setMinimumSize(const Size(0, 0));
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+      await windowManager.setSize(Size(240, 88));
+      await windowManager.setAlwaysOnTop(true);
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> exitMiniMode() async {
+    try {
+      await windowManager.setAlwaysOnTop(false);
+      await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+      await windowManager.setMinimumSize(Size(380, 600));
+      await windowManager.setSize(Size(440, 720));
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> startWindowDrag() async {
+    try {
+      await windowManager.startDragging();
+    } catch (_) {}
+  }
+
+  @override
   Future<void> initTray(TrayActions actions) async {
     if (!isAvailable) return;
     _trayActions = actions;
@@ -107,7 +134,9 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
     // Windows / Linux：tray_manager
     trayManager.addListener(this);
     try {
-      await trayManager.setIcon('assets/tray/tomato_32.png');
+      // Windows 用多尺寸 .ico（LoadImage 对 .ico 支持最稳，PNG 偶发加载失败）
+      final iconPath = Platform.isWindows ? 'assets/tray/tomato.ico' : 'assets/tray/tomato_32.png';
+      await trayManager.setIcon(iconPath);
       await trayManager.setToolTip('番茄时钟');
       await trayManager.setContextMenu(_buildMenu());
       _trayReady = true;

@@ -18,6 +18,15 @@ abstract class DesktopPlatform {
 
   Future<void> setFullScreen(bool enabled);
 
+  /// 进入迷你悬浮窗：无边框、置顶、缩小
+  Future<void> enterMiniMode();
+
+  /// 退出迷你悬浮窗：还原标题栏和尺寸
+  Future<void> exitMiniMode();
+
+  /// 按住拖动窗口（迷你模式用）
+  Future<void> startWindowDrag();
+
   Future<void> initTray(TrayActions actions);
 
   /// 托盘实时倒计时（macOS 菜单栏文字；Windows 更新悬停提示）

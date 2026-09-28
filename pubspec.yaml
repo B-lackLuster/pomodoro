@@ -68,8 +68,10 @@ flutter:
 
   assets:
     - assets/sound/bell.wav
+    - assets/sound/start.wav
     - assets/tray/tomato_32.png
     - assets/tray/tomato_16.png
+    - assets/tray/tomato.ico
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -20,6 +20,15 @@ class DesktopPlatformImpl implements DesktopPlatform {
   Future<void> setFullScreen(bool enabled) async {}
 
   @override
+  Future<void> enterMiniMode() async {}
+
+  @override
+  Future<void> exitMiniMode() async {}
+
+  @override
+  Future<void> startWindowDrag() async {}
+
+  @override
   Future<void> initTray(TrayActions actions) async {}
 
   @override

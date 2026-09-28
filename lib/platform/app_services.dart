@@ -29,11 +29,18 @@ class AppServices {
   ProviderSubscription<StoredSettings>? _settingsSub;
 
   int _lastTraySecond = -1;
+  PomodoroStatus? _prevStatus;
 
   late final AndroidTimerService _androidService;
   bool _androidForeground = false;
 
   void _onTimerState(PomodoroState state) {
+    // 进入运行态（从待开始或暂停）→ 播开始音
+    if (state.isRunning && _prevStatus != PomodoroStatus.running) {
+      _sound.playStart();
+    }
+    _prevStatus = state.status;
+
     final second = state.remaining.inSeconds;
     if (second == _lastTraySecond) return;
     _lastTraySecond = second;

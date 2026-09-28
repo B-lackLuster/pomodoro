@@ -7,6 +7,7 @@ import '../settings/settings_page.dart';
 import '../stats/stats_page.dart';
 import '../tasks/tasks_page.dart';
 import 'focus_mode_page.dart';
+import 'mini_mode_page.dart';
 import 'phase_style.dart';
 import 'progress_ring.dart';
 
@@ -42,6 +43,14 @@ class TimerPage extends ConsumerWidget {
             icon: const Icon(Icons.insights_outlined),
             tooltip: '数据统计',
             onPressed: () => push(const StatsPage()),
+          ),
+          IconButton(
+            icon: const Icon(Icons.picture_in_picture_alt_outlined),
+            tooltip: '迷你悬浮窗（置顶）',
+            onPressed: miniModeSupported()
+                ? () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const MiniModePage()))
+                : null,
           ),
           IconButton(
             icon: const Icon(Icons.fullscreen),
