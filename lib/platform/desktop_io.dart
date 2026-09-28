@@ -81,8 +81,12 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
   Future<void> enterMiniMode() async {
     try {
       await windowManager.setMinimumSize(const Size(0, 0));
-      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-      await windowManager.setSize(Size(240, 88));
+      // macOS 的 hidden 样式默认保留红绿灯按钮，需显式隐藏避免遮挡内容
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.hidden,
+        windowButtonVisibility: false,
+      );
+      await windowManager.setSize(Size(280, 116));
       await windowManager.setAlwaysOnTop(true);
     } catch (_) {}
   }
