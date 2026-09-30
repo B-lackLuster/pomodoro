@@ -64,41 +64,50 @@ class TimerPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _PhaseBadge(pomo: pomo, config: config),
-              const SizedBox(height: 24),
-              ProgressRing(
-                progress: pomo.progress,
-                timeText: pomo.clockText,
-                statusText: statusText,
-                color: phaseColor(pomo.phase),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                '今日完成 🍅 × ${pomo.completedFocusToday}'
-                '　目标 ${config.dailyGoal}',
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              TextButton(
-                onPressed: () => push(const TasksPage()),
-                child: Text(
-                  currentTaskLabel(currentTask),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: currentTask == null
-                        ? theme.colorScheme.onSurfaceVariant
-                        : theme.colorScheme.primary,
-                  ),
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: SizedBox(
+            height: constraints.maxHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Align(
+                // 内容整体偏上（约 1/3 处），高窗口下不留大空档
+                alignment: const Alignment(0, -0.35),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _PhaseBadge(pomo: pomo, config: config),
+                    const SizedBox(height: 24),
+                    ProgressRing(
+                      progress: pomo.progress,
+                      timeText: pomo.clockText,
+                      statusText: statusText,
+                      color: phaseColor(pomo.phase),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      '今日完成 🍅 × ${pomo.completedFocusToday}'
+                      '　目标 ${config.dailyGoal}',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    TextButton(
+                      onPressed: () => push(const TasksPage()),
+                      child: Text(
+                        currentTaskLabel(currentTask),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: currentTask == null
+                              ? theme.colorScheme.onSurfaceVariant
+                              : theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _Controls(pomo: pomo),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              _Controls(pomo: pomo),
-            ],
+            ),
           ),
         ),
       ),
