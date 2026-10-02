@@ -67,8 +67,10 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/sound/bell.wav
-    - assets/sound/start.wav
+    - assets/sound/start.mp3
+    - assets/sound/pause.mp3
+    - assets/sound/resume.mp3
+    - assets/sound/end.mp3
     - assets/tray/tomato_32.png
     - assets/tray/tomato_16.png
     - assets/tray/tomato.ico

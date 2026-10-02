@@ -35,9 +35,16 @@ class AppServices {
   bool _androidForeground = false;
 
   void _onTimerState(PomodoroState state) {
-    // 进入运行态（从待开始或暂停）→ 播开始音
+    // 状态转换音效：开始（待开始→计时）、恢复（暂停→计时）、暂停（计时→暂停）
     if (state.isRunning && _prevStatus != PomodoroStatus.running) {
-      _sound.playStart();
+      if (_prevStatus == PomodoroStatus.paused) {
+        _sound.playResume();
+      } else {
+        _sound.playStart();
+      }
+    } else if (state.status == PomodoroStatus.paused &&
+        _prevStatus == PomodoroStatus.running) {
+      _sound.playPause();
     }
     _prevStatus = state.status;
 
@@ -156,7 +163,7 @@ class AppServices {
   void _onPhaseCompleted(PhaseCompletion completion) {
     _recordLog(completion);
     if (completion.manualSkip) return;
-    _sound.playBell();
+    _sound.playPhaseEnd();
     if (completion.fromPhase == PomodoroPhase.focus) {
       final minutes = completion.toDuration.inMinutes;
       final phase = phaseLabel(completion.toPhase);
