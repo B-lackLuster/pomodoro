@@ -34,6 +34,9 @@ class SoundService {
   /// 阶段结束（番茄完成/休息结束）
   Future<void> playPhaseEnd() => _play('sound/end.mp3');
 
+  /// 手动跳过阶段
+  Future<void> playSkip() => _play('sound/skip.mp3');
+
   void dispose() {
     _player.dispose();
   }

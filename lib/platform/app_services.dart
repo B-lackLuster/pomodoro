@@ -162,7 +162,10 @@ class AppServices {
 
   void _onPhaseCompleted(PhaseCompletion completion) {
     _recordLog(completion);
-    if (completion.manualSkip) return;
+    if (completion.manualSkip) {
+      _sound.playSkip();
+      return;
+    }
     _sound.playPhaseEnd();
     if (completion.fromPhase == PomodoroPhase.focus) {
       final minutes = completion.toDuration.inMinutes;

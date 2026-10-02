@@ -71,6 +71,7 @@ flutter:
     - assets/sound/pause.mp3
     - assets/sound/resume.mp3
     - assets/sound/end.mp3
+    - assets/sound/skip.mp3
     - assets/tray/tomato_32.png
     - assets/tray/tomato_16.png
     - assets/tray/tomato.ico
