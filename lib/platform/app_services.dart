@@ -174,6 +174,19 @@ class AppServices {
       },
       fireImmediately: false,
     );
+
+    // 通道就绪后补推一次当前状态（启动时引擎先于托盘/小组件通道发状态，
+    // 首次推送会被吞，这里兜底）
+    final engineState = container.read(engineProvider).state;
+    unawaited(container.read(desktopPlatformProvider).updateWidgetState({
+      'status': engineState.status.name,
+      'phase': engineState.phase.name,
+      'endAtMs': engineState.isRunning
+          ? DateTime.now().add(engineState.remaining).millisecondsSinceEpoch.toDouble()
+          : 0.0,
+      'remainSec': engineState.remaining.inSeconds,
+      'completed': engineState.completedFocusToday,
+    }));
   }
 
   int _logSeq = 0;
