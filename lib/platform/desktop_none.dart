@@ -29,6 +29,9 @@ class DesktopPlatformImpl implements DesktopPlatform {
   Future<void> startWindowDrag() async {}
 
   @override
+  Future<void> updateWidgetState(Map<String, Object?> state) async {}
+
+  @override
   Future<void> initTray(TrayActions actions) async {}
 
   @override

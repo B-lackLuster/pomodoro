@@ -27,6 +27,9 @@ abstract class DesktopPlatform {
   /// 按住拖动窗口（迷你模式用）
   Future<void> startWindowDrag();
 
+  /// 推送桌面小组件状态（仅 macOS 生效）
+  Future<void> updateWidgetState(Map<String, Object?> state);
+
   Future<void> initTray(TrayActions actions);
 
   /// 托盘实时倒计时（macOS 菜单栏文字；Windows 更新悬停提示）

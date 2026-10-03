@@ -109,6 +109,12 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
   }
 
   @override
+  Future<void> updateWidgetState(Map<String, Object?> state) async {
+    if (!Platform.isMacOS) return;
+    await _macStatusItem.setWidgetState(state);
+  }
+
+  @override
   Future<void> initTray(TrayActions actions) async {
     if (!isAvailable) return;
     _trayActions = actions;
@@ -270,6 +276,12 @@ class _MacStatusItem {
   Future<void> quit() async {
     try {
       await _channel.invokeMethod('quit');
+    } catch (_) {}
+  }
+
+  Future<void> setWidgetState(Map<String, Object?> state) async {
+    try {
+      await _channel.invokeMethod('setWidgetState', state);
     } catch (_) {}
   }
 

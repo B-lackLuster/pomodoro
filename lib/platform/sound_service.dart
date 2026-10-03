@@ -6,7 +6,7 @@ class SoundService {
   final AudioPlayer _player = AudioPlayer();
 
   /// 播放音量（0.0 - 1.0）
-  static const double volume = 0.6;
+  static const double volume = 0.3;
 
   bool _enabled = true;
 

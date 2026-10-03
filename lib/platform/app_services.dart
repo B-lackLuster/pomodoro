@@ -30,23 +30,41 @@ class AppServices {
 
   int _lastTraySecond = -1;
   PomodoroStatus? _prevStatus;
+  PomodoroPhase? _prevPhase;
 
   late final AndroidTimerService _androidService;
   bool _androidForeground = false;
 
   void _onTimerState(PomodoroState state) {
+    final prevStatus = _prevStatus;
+    final prevPhase = _prevPhase;
+    _prevStatus = state.status;
+    _prevPhase = state.phase;
+
     // 状态转换音效：开始（待开始→计时）、恢复（暂停→计时）、暂停（计时→暂停）
-    if (state.isRunning && _prevStatus != PomodoroStatus.running) {
-      if (_prevStatus == PomodoroStatus.paused) {
+    if (state.isRunning && prevStatus != PomodoroStatus.running) {
+      if (prevStatus == PomodoroStatus.paused) {
         _sound.playResume();
       } else {
         _sound.playStart();
       }
     } else if (state.status == PomodoroStatus.paused &&
-        _prevStatus == PomodoroStatus.running) {
+        prevStatus == PomodoroStatus.running) {
       _sound.playPause();
     }
-    _prevStatus = state.status;
+
+    // 桌面小组件：阶段或状态变化时推送（倒计时由系统原生每秒自刷新）
+    if (state.phase != prevPhase || state.status != prevStatus) {
+      unawaited(_container?.read(desktopPlatformProvider).updateWidgetState({
+        'status': state.status.name,
+        'phase': state.phase.name,
+        'endAtMs': state.isRunning
+            ? DateTime.now().add(state.remaining).millisecondsSinceEpoch.toDouble()
+            : 0.0,
+        'remainSec': state.remaining.inSeconds,
+        'completed': state.completedFocusToday,
+      }));
+    }
 
     final second = state.remaining.inSeconds;
     if (second == _lastTraySecond) return;

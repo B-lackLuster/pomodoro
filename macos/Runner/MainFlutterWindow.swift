@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import WidgetKit
 
 class MainFlutterWindow: NSWindow {
   /// 关闭拦截器：返回 false 表示阻止本次关闭（用于最小化到托盘）。
@@ -95,6 +96,21 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
         window.performClose(nil)
       }
       result(true)
+    case "setWidgetState":
+      // 桌面小组件：写共享状态并刷新时间线
+      if let d = call.arguments as? [String: Any],
+         let shared = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro") {
+        shared.set(d["status"] as? String ?? "idle", forKey: "status")
+        shared.set(d["phase"] as? String ?? "focus", forKey: "phase")
+        shared.set(d["endAtMs"] as? Double ?? 0, forKey: "endAtMs")
+        shared.set(d["remainSec"] as? Int ?? 1500, forKey: "remainSec")
+        shared.set(d["completed"] as? Int ?? 0, forKey: "completed")
+        shared.set(Date().timeIntervalSince1970, forKey: "updatedAt")
+        WidgetCenter.shared.reloadAllTimelines()
+        result(true)
+      } else {
+        result(false)
+      }
     default:
       result(FlutterMethodNotImplemented)
     }
