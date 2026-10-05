@@ -32,6 +32,12 @@ class DesktopPlatformImpl implements DesktopPlatform {
   Future<void> updateWidgetState(Map<String, Object?> state) async {}
 
   @override
+  Future<String?> takePendingWidgetCommand() async => null;
+
+  @override
+  void setWidgetCommandHandler(void Function(String command)? handler) {}
+
+  @override
   Future<void> initTray(TrayActions actions) async {}
 
   @override

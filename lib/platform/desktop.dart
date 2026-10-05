@@ -30,6 +30,12 @@ abstract class DesktopPlatform {
   /// 推送桌面小组件状态（仅 macOS 生效）
   Future<void> updateWidgetState(Map<String, Object?> state);
 
+  /// 取走小组件积压命令（toggle/skip，仅 macOS）
+  Future<String?> takePendingWidgetCommand();
+
+  /// 注册小组件按钮命令回调（仅 macOS 生效）
+  void setWidgetCommandHandler(void Function(String command)? handler);
+
   Future<void> initTray(TrayActions actions);
 
   /// 托盘实时倒计时（macOS 菜单栏文字；Windows 更新悬停提示）

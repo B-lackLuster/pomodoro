@@ -58,6 +58,37 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
       instance?.notifyWindowCloseRequested()
       return false
     }
+
+    // 小组件按钮 → Darwin 通知 → 转发给 Dart
+    CFNotificationCenterAddObserver(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      Unmanaged.passUnretained(instance).toOpaque(),
+      { _, observer, name, _, _ in
+        guard let observer, let name else { return }
+        let plugin = Unmanaged<StatusItemPlugin>.fromOpaque(observer).takeUnretainedValue()
+        plugin.handleDarwinNotification(rawName: name.rawValue as String)
+      },
+      "com.tomatoclock.pomodoro.command" as CFString,
+      nil,
+      .deliverImmediately)
+  }
+
+  func handleDarwinNotification(rawName: String) {
+    guard rawName == "com.tomatoclock.pomodoro.command" else { return }
+    DispatchQueue.main.async { [weak self] in
+      guard let self, let shared = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro"),
+            let cmd = shared.string(forKey: "pendingCommand") else { return }
+      shared.removeObject(forKey: "pendingCommand")
+      self.channel?.invokeMethod("onWidgetCommand", arguments: cmd)
+    }
+  }
+
+  /// 应用冷启动时取走积压命令（小组件在应用未运行时按下按钮的场景）
+  static func takePendingCommand() -> String? {
+    guard let shared = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro"),
+          let cmd = shared.string(forKey: "pendingCommand") else { return nil }
+    shared.removeObject(forKey: "pendingCommand")
+    return cmd
   }
 
   func notifyWindowCloseRequested() {
@@ -96,6 +127,8 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
         window.performClose(nil)
       }
       result(true)
+    case "takePendingCommand":
+      result(StatusItemPlugin.takePendingCommand())
     case "setWidgetState":
       // 桌面小组件：写共享状态并刷新时间线
       if let d = call.arguments as? [String: Any],

@@ -1,7 +1,36 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
+import CoreFoundation
 
 private let groupDefaults = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro")
+
+enum DarwinNotificationCenter {
+    static func post(_ name: String) {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(name as CFString), nil, nil, true)
+    }
+}
+
+/// 小组件按钮 → 写命令 → Darwin 通知唤醒应用执行
+struct ToggleTimerIntent: AppIntent {
+    static var title: LocalizedStringResource = "开始/暂停"
+    func perform() async throws -> some IntentResult {
+        groupDefaults?.set("toggle", forKey: "pendingCommand")
+        DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
+        return .result()
+    }
+}
+
+struct SkipTimerIntent: AppIntent {
+    static var title: LocalizedStringResource = "跳过当前阶段"
+    func perform() async throws -> some IntentResult {
+        groupDefaults?.set("skip", forKey: "pendingCommand")
+        DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
+        return .result()
+    }
+}
 
 struct PomodoroState {
     var status: String   // idle / running / paused
@@ -92,6 +121,21 @@ struct PomodoroWidgetView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+                // 可交互按钮（macOS 14+）
+                if #available(macOS 14.0, *) {
+                    Button(intent: ToggleTimerIntent()) {
+                        Image(systemName: s.status == "running" ? "pause.fill" : "play.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(s.phaseColor)
+                    }
+                    .buttonStyle(.borderless)
+                    Button(intent: SkipTimerIntent()) {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
             Spacer(minLength: 0)
             if s.status == "running", let end = s.endDate {
@@ -99,7 +143,7 @@ struct PomodoroWidgetView: View {
                     .font(.system(size: 32, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundColor(.primary)
-                Text("进行中 · 到点见")
+                Text("点击上方按钮可暂停/跳过")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             } else if s.status == "paused" {
@@ -107,7 +151,7 @@ struct PomodoroWidgetView: View {
                     .font(.system(size: 32, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundColor(.secondary)
-                Text("已暂停，回应用继续")
+                Text("已暂停 · 点 ▶ 继续")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             } else {

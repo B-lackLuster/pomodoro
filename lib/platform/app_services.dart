@@ -69,11 +69,16 @@ class AppServices {
     final second = state.remaining.inSeconds;
     if (second == _lastTraySecond) return;
     _lastTraySecond = second;
+    final count = state.completedFocusToday;
+    final title = count > 0
+        ? '🍅×$count ${state.clockText}'
+        : '🍅 ${state.clockText}';
     _container
         ?.read(desktopPlatformProvider)
         .updateTrayCountdown(
-          state.clockText,
-          '番茄时钟 · ${phaseLabel(state.phase)} 剩余 ${state.clockText}',
+          title,
+          '番茄时钟 · ${phaseLabel(state.phase)} 剩余 ${state.clockText}'
+          '${count > 0 ? ' · 今日 🍅×$count' : ''}',
         );
     _updateAndroidNotification(state, second);
   }
@@ -159,6 +164,16 @@ class AppServices {
     _androidService.onUserSkip =
         () => container.read(pomodoroProvider.notifier).skip();
 
+    // macOS：小组件按钮命令（Darwin 通知链路）
+    container.read(desktopPlatformProvider).setWidgetCommandHandler((cmd) {
+      final notifier = container.read(pomodoroProvider.notifier);
+      if (cmd == 'toggle') {
+        notifier.toggle();
+      } else if (cmd == 'skip') {
+        notifier.skip();
+      }
+    });
+
     // 计时状态 → 托盘倒计时文字 + Android 通知
     _stateSub = container
         .read(engineProvider)
@@ -174,6 +189,18 @@ class AppServices {
       },
       fireImmediately: false,
     );
+
+    // 小组件在应用未运行时按下的积压命令，启动后执行
+    unawaited(() async {
+      final cmd = await container.read(desktopPlatformProvider).takePendingWidgetCommand();
+      if (cmd == null) return;
+      final notifier = container.read(pomodoroProvider.notifier);
+      if (cmd == 'toggle') {
+        notifier.toggle();
+      } else if (cmd == 'skip') {
+        notifier.skip();
+      }
+    }());
 
     // 通道就绪后补推一次当前状态（启动时引擎先于托盘/小组件通道发状态，
     // 首次推送会被吞，这里兜底）

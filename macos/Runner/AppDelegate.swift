@@ -11,4 +11,15 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
   }
+
+  // 点程序坞图标时若主窗口被隐藏（最小化到托盘），重新显示
+  override func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      if let win = NSApp.windows.first(where: { $0 is MainFlutterWindow }) {
+        win.makeKeyAndOrderFront(nil)
+      }
+      NSApp.activate(ignoringOtherApps: true)
+    }
+    return true
+  }
 }

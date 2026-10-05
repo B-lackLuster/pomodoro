@@ -115,6 +115,21 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
   }
 
   @override
+  Future<String?> takePendingWidgetCommand() async {
+    if (!Platform.isMacOS) return null;
+    try {
+      return await _macStatusItem.takePendingCommand();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void setWidgetCommandHandler(void Function(String command)? handler) {
+    _macStatusItem.onWidgetCommand = handler;
+  }
+
+  @override
   Future<void> initTray(TrayActions actions) async {
     if (!isAvailable) return;
     _trayActions = actions;
@@ -259,6 +274,9 @@ class _MacStatusItem {
   void Function(int menuIndex)? onMenu;
   void Function()? onCloseRequested;
 
+  /// 小组件按钮命令（toggle / skip）
+  void Function(String command)? onWidgetCommand;
+
   Future<bool> show() async {
     try {
       final data = await rootBundle.load('assets/tray/tomato_32.png');
@@ -283,6 +301,14 @@ class _MacStatusItem {
     try {
       await _channel.invokeMethod('setWidgetState', state);
     } catch (_) {}
+  }
+
+  Future<String?> takePendingCommand() async {
+    try {
+      return await _channel.invokeMethod('takePendingCommand');
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> setTitle(String title) async {
@@ -312,6 +338,9 @@ class _MacStatusItem {
         if (index != null) onMenu?.call(index);
       case 'onWindowCloseRequested':
         onCloseRequested?.call();
+      case 'onWidgetCommand':
+        final cmd = call.arguments as String?;
+        if (cmd != null) onWidgetCommand?.call(cmd);
     }
     return null;
   }
