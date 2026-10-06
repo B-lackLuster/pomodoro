@@ -3,7 +3,8 @@ import SwiftUI
 import AppIntents
 import CoreFoundation
 
-private let groupDefaults = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro")
+private let groupContainerURL = FileManager.default.containerURL(
+    forSecurityApplicationGroupIdentifier: "group.com.tomatoclock.pomodoro")
 
 enum DarwinNotificationCenter {
     static func post(_ name: String) {
@@ -14,10 +15,17 @@ enum DarwinNotificationCenter {
 }
 
 /// 小组件按钮 → 写命令 → Darwin 通知唤醒应用执行
+private func writeCommand(_ cmd: String) {
+    guard let dir = groupContainerURL else { return }
+    let obj: [String: Any] = ["command": cmd, "at": Date().timeIntervalSince1970]
+    if let data = try? JSONSerialization.data(withJSONObject: obj) {
+        try? data.write(to: dir.appendingPathComponent("command.json"), options: .atomic)
+    }
+}
 struct ToggleTimerIntent: AppIntent {
     static var title: LocalizedStringResource = "开始/暂停"
     func perform() async throws -> some IntentResult {
-        groupDefaults?.set("toggle", forKey: "pendingCommand")
+        writeCommand("toggle")
         DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
         return .result()
     }
@@ -26,7 +34,7 @@ struct ToggleTimerIntent: AppIntent {
 struct SkipTimerIntent: AppIntent {
     static var title: LocalizedStringResource = "跳过当前阶段"
     func perform() async throws -> some IntentResult {
-        groupDefaults?.set("skip", forKey: "pendingCommand")
+        writeCommand("skip")
         DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
         return .result()
     }
@@ -40,12 +48,19 @@ struct PomodoroState {
     var completed: Int
 
     static func load() -> PomodoroState {
-        PomodoroState(
-            status: groupDefaults?.string(forKey: "status") ?? "idle",
-            phase: groupDefaults?.string(forKey: "phase") ?? "focus",
-            endAtMs: groupDefaults?.double(forKey: "endAtMs") ?? 0,
-            remainSec: groupDefaults?.object(forKey: "remainSec") as? Int ?? 1500,
-            completed: groupDefaults?.object(forKey: "completed") as? Int ?? 0
+        let fallback = PomodoroState(status: "idle", phase: "focus", endAtMs: 0,
+                                     remainSec: 1500, completed: 0)
+        guard let url = groupContainerURL?.appendingPathComponent("state.json"),
+              let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return fallback
+        }
+        return PomodoroState(
+            status: obj["status"] as? String ?? "idle",
+            phase: obj["phase"] as? String ?? "focus",
+            endAtMs: obj["endAtMs"] as? Double ?? 0,
+            remainSec: obj["remainSec"] as? Int ?? 1500,
+            completed: obj["completed"] as? Int ?? 0
         )
     }
 

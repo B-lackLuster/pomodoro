@@ -76,18 +76,25 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
   func handleDarwinNotification(rawName: String) {
     guard rawName == "com.tomatoclock.pomodoro.command" else { return }
     DispatchQueue.main.async { [weak self] in
-      guard let self, let shared = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro"),
-            let cmd = shared.string(forKey: "pendingCommand") else { return }
-      shared.removeObject(forKey: "pendingCommand")
+      guard let self, let cmd = StatusItemPlugin.takePendingCommand() else { return }
       self.channel?.invokeMethod("onWidgetCommand", arguments: cmd)
     }
   }
 
-  /// 应用冷启动时取走积压命令（小组件在应用未运行时按下按钮的场景）
+  static let groupID = "group.com.tomatoclock.pomodoro"
+
+  static var groupContainerURL: URL? {
+    FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
+  }
+
+  /// 应用冷启动时取走积压命令（小组件在应用未运行时按下按钮的场景）。
+  /// 命令走容器内 command.json 文件（跨进程即时可见，无 prefs 刷新延迟）
   static func takePendingCommand() -> String? {
-    guard let shared = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro"),
-          let cmd = shared.string(forKey: "pendingCommand") else { return nil }
-    shared.removeObject(forKey: "pendingCommand")
+    guard let url = groupContainerURL?.appendingPathComponent("command.json"),
+          let data = try? Data(contentsOf: url),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let cmd = obj["command"] as? String else { return nil }
+    try? FileManager.default.removeItem(at: url)
     return cmd
   }
 
@@ -130,15 +137,20 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
     case "takePendingCommand":
       result(StatusItemPlugin.takePendingCommand())
     case "setWidgetState":
-      // 桌面小组件：写共享状态并刷新时间线
+      // 桌面小组件：状态写 App Group 容器 JSON 文件（跨进程即时可见）并刷新时间线
       if let d = call.arguments as? [String: Any],
-         let shared = UserDefaults(suiteName: "group.com.tomatoclock.pomodoro") {
-        shared.set(d["status"] as? String ?? "idle", forKey: "status")
-        shared.set(d["phase"] as? String ?? "focus", forKey: "phase")
-        shared.set(d["endAtMs"] as? Double ?? 0, forKey: "endAtMs")
-        shared.set(d["remainSec"] as? Int ?? 1500, forKey: "remainSec")
-        shared.set(d["completed"] as? Int ?? 0, forKey: "completed")
-        shared.set(Date().timeIntervalSince1970, forKey: "updatedAt")
+         let dir = StatusItemPlugin.groupContainerURL {
+        let state: [String: Any] = [
+          "status": d["status"] as? String ?? "idle",
+          "phase": d["phase"] as? String ?? "focus",
+          "endAtMs": d["endAtMs"] as? Double ?? 0,
+          "remainSec": d["remainSec"] as? Int ?? 1500,
+          "completed": d["completed"] as? Int ?? 0,
+          "updatedAt": Date().timeIntervalSince1970,
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted]) {
+          try? data.write(to: dir.appendingPathComponent("state.json"), options: .atomic)
+        }
         WidgetCenter.shared.reloadAllTimelines()
         result(true)
       } else {

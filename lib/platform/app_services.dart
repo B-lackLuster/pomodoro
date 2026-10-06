@@ -70,15 +70,14 @@ class AppServices {
     if (second == _lastTraySecond) return;
     _lastTraySecond = second;
     final count = state.completedFocusToday;
-    final title = count > 0
-        ? '🍅×$count ${state.clockText}'
-        : '🍅 ${state.clockText}';
+    // 托盘图标本身是番茄，标题不再带 🍅 emoji，避免双番茄
+    final title = count > 0 ? '×$count ${state.clockText}' : state.clockText;
     _container
         ?.read(desktopPlatformProvider)
         .updateTrayCountdown(
           title,
           '番茄时钟 · ${phaseLabel(state.phase)} 剩余 ${state.clockText}'
-          '${count > 0 ? ' · 今日 🍅×$count' : ''}',
+          '${count > 0 ? ' · 今日 ×$count' : ''}',
         );
     _updateAndroidNotification(state, second);
   }
