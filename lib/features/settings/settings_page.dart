@@ -2,12 +2,18 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../platform/json_file.dart';
 import '../../state/providers.dart';
 
+final _packageInfoProvider = FutureProvider<PackageInfo>(
+  (ref) => PackageInfo.fromPlatform(),
+);
+
 /// 当前是否为桌面平台（决定窗口相关开关是否展示）
-final bool isDesktop = !kIsWeb &&
+final bool isDesktop =
+    !kIsWeb &&
     (defaultTargetPlatform == TargetPlatform.macOS ||
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.linux);
@@ -24,9 +30,8 @@ class SettingsPage extends ConsumerWidget {
     final json = ref.read(appRepositoryProvider).exportJson();
     await writeTextFile(location.path, json);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导出到 ${location.path}')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('已导出到 ${location.path}')));
     }
   }
 
@@ -55,8 +60,9 @@ class SettingsPage extends ConsumerWidget {
     if (confirmed != true) return;
 
     try {
-      final (logs, tasks) =
-          await ref.read(appRepositoryProvider).importJson(await file.readAsString());
+      final (logs, tasks) = await ref
+          .read(appRepositoryProvider)
+          .importJson(await file.readAsString());
       ref.invalidate(dataVersionProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -65,9 +71,8 @@ class SettingsPage extends ConsumerWidget {
       }
     } on FormatException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败：${e.message}')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入失败：${e.message}')));
       }
     }
   }
@@ -77,6 +82,7 @@ class SettingsPage extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final config = settings.config;
     final notifier = ref.read(settingsProvider.notifier);
+    final packageInfo = ref.watch(_packageInfoProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
@@ -117,8 +123,9 @@ class SettingsPage extends ConsumerWidget {
             min: 2,
             max: 8,
             step: 1,
-            onChanged: (v) => notifier
-                .updateConfig(config.copyWith(roundsBeforeLongBreak: v)),
+            onChanged: (v) => notifier.updateConfig(
+              config.copyWith(roundsBeforeLongBreak: v),
+            ),
           ),
           _NumberTile(
             label: '每日目标（个番茄）',
@@ -141,6 +148,25 @@ class SettingsPage extends ConsumerWidget {
             value: config.autoStartFocus,
             onChanged: (v) =>
                 notifier.updateConfig(config.copyWith(autoStartFocus: v)),
+          ),
+          const _SectionHeader('每日'),
+          ListTile(
+            title: const Text('每日重置时间'),
+            subtitle: const Text('今日完成数和统计在此时间跨天'),
+            trailing: Text(
+              '${settings.dailyResetHour.toString().padLeft(2, '0')}:00',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            onTap: () async {
+              final hour = await showDialog<int>(
+                context: context,
+                builder: (context) =>
+                    _ResetHourDialog(initial: settings.dailyResetHour),
+              );
+              if (hour != null) {
+                await notifier.setDailyResetHour(hour);
+              }
+            },
           ),
           const _SectionHeader('通知与声音'),
           if (isDesktop)
@@ -204,6 +230,17 @@ class SettingsPage extends ConsumerWidget {
               onTap: () => _importData(context, ref),
             ),
           ],
+          const _SectionHeader('关于'),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('番茄时钟'),
+            subtitle: packageInfo.when(
+              data: (info) =>
+                  Text('版本 ${info.version}（构建 ${info.buildNumber}）'),
+              loading: () => const Text('正在读取版本…'),
+              error: (_, _) => const Text('暂时无法读取版本'),
+            ),
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -222,9 +259,7 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Text(
         title,
-        style: Theme.of(context)
-            .textTheme
-            .titleSmall
+        style: Theme.of(context).textTheme.titleSmall
             ?.copyWith(color: Theme.of(context).colorScheme.primary),
       ),
     );
@@ -256,7 +291,9 @@ class _NumberTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            onPressed: value - step >= min ? () => onChanged(value - step) : null,
+            onPressed: value - step >= min
+                ? () => onChanged(value - step)
+                : null,
             icon: const Icon(Icons.remove_circle_outline),
           ),
           SizedBox(
@@ -268,11 +305,65 @@ class _NumberTile extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: value + step <= max ? () => onChanged(value + step) : null,
+            onPressed: value + step <= max
+                ? () => onChanged(value + step)
+                : null,
             icon: const Icon(Icons.add_circle_outline),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ResetHourDialog extends StatefulWidget {
+  const _ResetHourDialog({required this.initial});
+
+  final int initial;
+
+  @override
+  State<_ResetHourDialog> createState() => _ResetHourDialogState();
+}
+
+class _ResetHourDialogState extends State<_ResetHourDialog> {
+  late int hour = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('每日重置时间'),
+      content: SizedBox(
+        width: 280,
+        child: DropdownButtonFormField<int>(
+          initialValue: hour,
+          decoration: const InputDecoration(labelText: '重置时刻'),
+          items: [
+            for (var h = 0; h < 24; h++)
+              DropdownMenuItem(
+                value: h,
+                child: Text(
+                  '${h.toString().padLeft(2, '0')}:00'
+                  '${h == 4
+                      ? '（默认）'
+                      : h == 0
+                      ? '（自然日）'
+                      : ''}',
+                ),
+              ),
+          ],
+          onChanged: (v) => setState(() => hour = v ?? 0),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(hour),
+          child: const Text('确定'),
+        ),
+      ],
     );
   }
 }

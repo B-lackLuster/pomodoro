@@ -150,6 +150,16 @@ void main() {
   });
 
   group('配置更新', () {
+    test('暂停后修改时长，当前阶段保持原有时长和进度', () {
+      engine.start();
+      advance(const Duration(minutes: 10));
+      engine.pause();
+      engine.updateConfig(const PomodoroConfig(focusMinutes: 5));
+      expect(engine.state.duration, const Duration(minutes: 25));
+      expect(engine.state.remaining, const Duration(minutes: 15));
+      engine.resetPhase();
+      expect(engine.state.duration, const Duration(minutes: 5));
+    });
     test('未开始的阶段立即应用新时长', () {
       engine.updateConfig(const PomodoroConfig(focusMinutes: 50));
       expect(engine.state.duration, const Duration(minutes: 50));
@@ -164,6 +174,60 @@ void main() {
       advance(const Duration(minutes: 25));
       expect(engine.state.phase, PomodoroPhase.shortBreak);
       expect(engine.state.duration, const Duration(minutes: 5));
+    });
+  });
+
+  group('凌晨四点与延迟唤醒', () {
+    test('运行中跨四点，清零今日数但保留当前计时和循环', () {
+      current = DateTime(2026, 9, 7, 3, 50);
+      engine.setCompletedFocusToday(3);
+      engine.start();
+      advance(const Duration(minutes: 9));
+      expect(engine.state.completedFocusToday, 3);
+      advance(const Duration(minutes: 1));
+      expect(engine.state.completedFocusToday, 0);
+      expect(engine.state.remaining, const Duration(minutes: 15));
+      advance(const Duration(minutes: 15));
+      expect(engine.state.completedFocusToday, 1);
+      expect(engine.state.focusInCycle, 1);
+    });
+
+    test('暂停整夜后恢复，今日数清零并保留剩余时间', () {
+      current = DateTime(2026, 9, 7, 3, 30);
+      engine.setCompletedFocusToday(3);
+      engine.start();
+      advance(const Duration(minutes: 5));
+      engine.pause();
+      current = DateTime(2026, 9, 8, 9);
+      engine.start();
+      expect(engine.state.completedFocusToday, 0);
+      expect(engine.state.remaining, const Duration(minutes: 20));
+    });
+
+    test('睡眠中四点前已经完成的番茄不会算入新一天', () async {
+      current = DateTime(2026, 9, 7, 3, 30);
+      engine.setCompletedFocusToday(3);
+      final events = <PhaseCompletion>[];
+      final sub = engine.completions.listen(events.add);
+      engine.start();
+      advance(const Duration(hours: 6));
+      expect(engine.state.completedFocusToday, 0);
+      expect(engine.state.focusInCycle, 1);
+      await Future<void>.delayed(Duration.zero);
+      expect(events.single.endedAt, DateTime(2026, 9, 7, 3, 55));
+      expect(
+        events.single.endedAt.difference(events.single.startedAt),
+        const Duration(minutes: 25),
+      );
+      await sub.cancel();
+    });
+
+    test('到期瞬间暂停会结算番茄，不会卡在暂停的零秒', () {
+      engine.start();
+      current = current.add(const Duration(minutes: 25));
+      engine.pause();
+      expect(engine.state.phase, PomodoroPhase.shortBreak);
+      expect(engine.state.completedFocusToday, 1);
     });
   });
 

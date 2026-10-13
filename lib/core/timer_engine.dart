@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'models.dart';
+import 'study_day.dart';
 
 /// 一次阶段切换（自然结束或手动跳过）
 class PhaseCompletion {
@@ -39,8 +40,28 @@ class PhaseCompletion {
 class PomodoroEngine {
   PomodoroEngine({
     DateTime Function()? now,
+    int dailyResetHour = 4,
     this.tickInterval = const Duration(milliseconds: 200),
-  }) : _now = now ?? DateTime.now;
+  }) : _now = now ?? DateTime.now,
+       _dailyResetHour = dailyResetHour {
+    _day = studyDayKey(_now(), resetHour: _dailyResetHour);
+  }
+
+  int _dailyResetHour;
+  late String _day;
+
+  void updateDailyResetHour(int hour) {
+    _dailyResetHour = hour.clamp(0, 23);
+    _refreshDay();
+  }
+
+  void _refreshDay() {
+    final day = studyDayKey(_now(), resetHour: _dailyResetHour);
+    if (day == _day) return;
+    _day = day;
+    _state = _copyWith(completedFocusToday: 0);
+    _emit();
+  }
 
   /// 可注入时钟，供测试使用
   final DateTime Function() _now;
@@ -76,11 +97,12 @@ class PomodoroEngine {
   /// 阶段切换事件（含手动跳过），供通知/提示音等副作用订阅
   Stream<PhaseCompletion> get completions => _completionsController.stream;
   PomodoroConfig get config => _config;
+  DateTime? get endAt => _endAt;
 
-  /// 更新配置。未在运行的阶段立即应用新时长；运行中的阶段保持不变，下一阶段生效。
+  /// 更新配置。尚未开始时立即应用；运行或暂停的阶段保持不变，下一阶段生效。
   void updateConfig(PomodoroConfig config) {
     _config = config;
-    if (_state.isRunning) return;
+    if (_state.status != PomodoroStatus.idle) return;
     final phaseDuration = _durationOf(_state.phase);
     final notStarted = _state.remaining == _state.duration;
     _state = _copyWith(
@@ -91,6 +113,7 @@ class PomodoroEngine {
   }
 
   void start() {
+    _refreshDay();
     if (_state.isRunning) return;
     final wasIdle = _state.status == PomodoroStatus.idle;
     final remaining = _state.status == PomodoroStatus.paused
@@ -108,6 +131,11 @@ class PomodoroEngine {
 
   void pause() {
     if (!_state.isRunning) return;
+    _refreshDay();
+    if (!_endAt!.isAfter(_now())) {
+      _advance(manualSkip: false);
+      return;
+    }
     _stopTicker();
     final remaining = _endAt!.difference(_now());
     _endAt = null;
@@ -146,6 +174,7 @@ class PomodoroEngine {
 
   /// 跳过当前阶段。手动跳过的专注不计入完成数，也不会自动开始下一阶段。
   void skip() {
+    _refreshDay();
     _stopTicker();
     _endAt = null;
     _advance(manualSkip: true);
@@ -153,6 +182,7 @@ class PomodoroEngine {
 
   /// 外部（持久层）回填今日完成数
   void setCompletedFocusToday(int count) {
+    _day = studyDayKey(_now(), resetHour: _dailyResetHour);
     if (count == _state.completedFocusToday) return;
     _state = _copyWith(completedFocusToday: count);
     _emit();
@@ -180,6 +210,7 @@ class PomodoroEngine {
   }
 
   void _onTick() {
+    _refreshDay();
     if (!_state.isRunning || _endAt == null) return;
     final remaining = _endAt!.difference(_now());
     if (remaining <= Duration.zero) {
@@ -195,14 +226,17 @@ class PomodoroEngine {
   void debugTick() => _onTick();
 
   void _advance({required bool manualSkip}) {
-    final endedAt = _now();
+    _stopTicker();
+    final endedAt = manualSkip ? _now() : (_endAt ?? _now());
     final startedAt = _phaseStartedAt ?? endedAt;
     final fromPhase = _state.phase;
     final wasFocus = fromPhase == PomodoroPhase.focus;
     var completed = _state.completedFocusToday;
     var inCycle = _state.focusInCycle;
     if (wasFocus && !manualSkip) {
-      completed += 1;
+      if (studyDayKey(endedAt, resetHour: _dailyResetHour) == _day) {
+        completed += 1;
+      }
       inCycle += 1;
     }
 
@@ -219,8 +253,8 @@ class PomodoroEngine {
     final autoStart = manualSkip
         ? false
         : (next == PomodoroPhase.focus
-            ? _config.autoStartFocus
-            : _config.autoStartBreak);
+              ? _config.autoStartFocus
+              : _config.autoStartBreak);
 
     _state = PomodoroState(
       phase: next,
@@ -240,15 +274,17 @@ class PomodoroEngine {
       _phaseStartedAt = null;
     }
 
-    _completionsController.add(PhaseCompletion(
-      fromPhase: fromPhase,
-      toPhase: next,
-      toDuration: duration,
-      manualSkip: manualSkip,
-      completedFocusToday: completed,
-      startedAt: startedAt,
-      endedAt: endedAt,
-    ));
+    _completionsController.add(
+      PhaseCompletion(
+        fromPhase: fromPhase,
+        toPhase: next,
+        toDuration: duration,
+        manualSkip: manualSkip,
+        completedFocusToday: completed,
+        startedAt: startedAt,
+        endedAt: endedAt,
+      ),
+    );
     _emit();
   }
 

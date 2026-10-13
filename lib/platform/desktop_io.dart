@@ -18,7 +18,9 @@ import 'desktop.dart';
 /// 托盘：macOS 走自实现的 StatusItemPlugin（tray_manager 0.5.3 在 macOS 26
 /// 上 NSStatusItem 不渲染）；Windows/Linux 走 tray_manager。
 class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
-  late final _WindowCloseHandler _windowCloseHandler = _WindowCloseHandler(this);
+  late final _WindowCloseHandler _windowCloseHandler = _WindowCloseHandler(
+    this,
+  );
 
   final _MacStatusItem _macStatusItem = _MacStatusItem();
 
@@ -127,6 +129,8 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
   @override
   void setWidgetCommandHandler(void Function(String command)? handler) {
     _macStatusItem.onWidgetCommand = handler;
+    if (Platform.isMacOS)
+      unawaited(_macStatusItem.setWidgetCommandsReady(handler != null));
   }
 
   @override
@@ -160,7 +164,9 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
     trayManager.addListener(this);
     try {
       // Windows 用多尺寸 .ico（LoadImage 对 .ico 支持最稳，PNG 偶发加载失败）
-      final iconPath = Platform.isWindows ? 'assets/tray/tomato.ico' : 'assets/tray/tomato_32.png';
+      final iconPath = Platform.isWindows
+          ? 'assets/tray/tomato.ico'
+          : 'assets/tray/tomato_32.png';
       await trayManager.setIcon(iconPath);
       await trayManager.setToolTip('番茄时钟');
       await trayManager.setContextMenu(_buildMenu());
@@ -185,14 +191,16 @@ class DesktopPlatformImpl with TrayListener implements DesktopPlatform {
   }
 
   Menu _buildMenu() {
-    return Menu(items: [
-      MenuItem(label: '显示主窗口', onClick: (_) => _trayActions?.onShow()),
-      MenuItem.separator(),
-      MenuItem(label: '开始 / 暂停', onClick: (_) => _trayActions?.onToggle()),
-      MenuItem(label: '跳过当前阶段', onClick: (_) => _trayActions?.onSkip()),
-      MenuItem.separator(),
-      MenuItem(label: '退出', onClick: (_) => _trayActions?.onQuit()),
-    ]);
+    return Menu(
+      items: [
+        MenuItem(label: '显示主窗口', onClick: (_) => _trayActions?.onShow()),
+        MenuItem.separator(),
+        MenuItem(label: '开始 / 暂停', onClick: (_) => _trayActions?.onToggle()),
+        MenuItem(label: '跳过当前阶段', onClick: (_) => _trayActions?.onSkip()),
+        MenuItem.separator(),
+        MenuItem(label: '退出', onClick: (_) => _trayActions?.onQuit()),
+      ],
+    );
   }
 
   @override
@@ -281,7 +289,8 @@ class _MacStatusItem {
     try {
       final data = await rootBundle.load('assets/tray/tomato_32.png');
       final base64Icon = base64Encode(
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
       _channel.setMethodCallHandler(_onMethodCall);
       await _channel.invokeMethod('show', {'base64Icon': base64Icon});
       return true;
@@ -299,8 +308,11 @@ class _MacStatusItem {
 
   Future<void> setWidgetState(Map<String, Object?> state) async {
     try {
-      await _channel.invokeMethod('setWidgetState', state);
-    } catch (_) {}
+      final ok = await _channel.invokeMethod<bool>('setWidgetState', state);
+      if (ok != true) debugPrint('[widget] Shared state was not saved');
+    } catch (error) {
+      debugPrint('[widget] State synchronization failed: $error');
+    }
   }
 
   Future<String?> takePendingCommand() async {
@@ -308,6 +320,15 @@ class _MacStatusItem {
       return await _channel.invokeMethod('takePendingCommand');
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<void> setWidgetCommandsReady(bool ready) async {
+    try {
+      _channel.setMethodCallHandler(_onMethodCall);
+      await _channel.invokeMethod('setWidgetCommandsReady', ready);
+    } catch (error) {
+      debugPrint('[widget] Command registration failed: $error');
     }
   }
 

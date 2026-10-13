@@ -4,7 +4,7 @@ import AppIntents
 import CoreFoundation
 
 private let groupContainerURL = FileManager.default.containerURL(
-    forSecurityApplicationGroupIdentifier: "group.com.tomatoclock.pomodoro")
+    forSecurityApplicationGroupIdentifier: "5V582QBP6Q.com.tomatoclock.pomodoro.shared")
 
 enum DarwinNotificationCenter {
     static func post(_ name: String) {
@@ -24,6 +24,7 @@ private func writeCommand(_ cmd: String) {
 }
 struct ToggleTimerIntent: AppIntent {
     static var title: LocalizedStringResource = "开始/暂停"
+    static var openAppWhenRun: Bool = true
     func perform() async throws -> some IntentResult {
         writeCommand("toggle")
         DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
@@ -33,6 +34,7 @@ struct ToggleTimerIntent: AppIntent {
 
 struct SkipTimerIntent: AppIntent {
     static var title: LocalizedStringResource = "跳过当前阶段"
+    static var openAppWhenRun: Bool = true
     func perform() async throws -> some IntentResult {
         writeCommand("skip")
         DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
@@ -46,10 +48,28 @@ struct PomodoroState {
     var endAtMs: Double
     var remainSec: Int
     var completed: Int
+    var completedMonth: Int = 0
+    var day: String = ""
+    var dailyResetHour: Int = 4
+    var connected: Bool = true
+
+    func onDate(_ date: Date) -> PomodoroState {
+        var state = self
+        let calendar = Calendar.current
+        let boundary = calendar.date(bySettingHour: dailyResetHour, minute: 0,
+                                     second: 0, of: date) ?? date
+        let studyDate = date < boundary
+            ? calendar.date(byAdding: .day, value: -1, to: date) ?? date : date
+        let parts = calendar.dateComponents([.year, .month, .day], from: studyDate)
+        let key = String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+        if key != day { state.completed = 0 }
+        if key.prefix(7) != day.prefix(7) { state.completedMonth = 0 }
+        return state
+    }
 
     static func load() -> PomodoroState {
         let fallback = PomodoroState(status: "idle", phase: "focus", endAtMs: 0,
-                                     remainSec: 1500, completed: 0)
+                                     remainSec: 1500, completed: 0, connected: false)
         guard let url = groupContainerURL?.appendingPathComponent("state.json"),
               let data = try? Data(contentsOf: url),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -60,7 +80,10 @@ struct PomodoroState {
             phase: obj["phase"] as? String ?? "focus",
             endAtMs: obj["endAtMs"] as? Double ?? 0,
             remainSec: obj["remainSec"] as? Int ?? 1500,
-            completed: obj["completed"] as? Int ?? 0
+            completed: obj["completed"] as? Int ?? 0,
+            completedMonth: obj["completedMonth"] as? Int ?? 0,
+            day: obj["day"] as? String ?? "",
+            dailyResetHour: min(23, max(0, obj["dailyResetHour"] as? Int ?? 4))
         )
     }
 
@@ -106,15 +129,20 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SimpleEntry>) -> Void) {
         let state = PomodoroState.load()
-        var entries = [SimpleEntry(date: Date(), state: state)]
-        var refresh: Date
-        if let end = state.endDate {
-            // 倒计时结束时再刷新一次，显示"该休息了"
+        let now = Date()
+        var entries = [SimpleEntry(date: now, state: state.onDate(now))]
+        var refresh = now.addingTimeInterval(15 * 60)
+        if let end = state.endDate, end > now {
             entries.append(SimpleEntry(date: end, state: state))
-            refresh = end.addingTimeInterval(30)
-        } else {
-            refresh = Date().addingTimeInterval(15 * 60)
+            refresh = min(refresh, end.addingTimeInterval(1))
         }
+        if let reset = Calendar.current.nextDate(
+            after: now, matching: DateComponents(hour: state.dailyResetHour, minute: 0, second: 0),
+            matchingPolicy: .nextTime) {
+            entries.append(SimpleEntry(date: reset, state: state.onDate(reset)))
+            refresh = min(refresh, reset)
+        }
+        entries.sort { $0.date < $1.date }
         completion(Timeline(entries: entries, policy: .after(refresh)))
     }
 }
@@ -123,7 +151,7 @@ struct PomodoroWidgetView: View {
     let entry: SimpleEntry
 
     var body: some View {
-        let s = entry.state
+        let s = entry.state.onDate(entry.date)
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 Text("🍅")
@@ -131,36 +159,56 @@ struct PomodoroWidgetView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(s.phaseColor)
                 Spacer()
-                if s.completed > 0 {
-                    Text("🍅×\(s.completed)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
                 // 可交互按钮（macOS 14+）
                 if #available(macOS 14.0, *) {
                     Button(intent: ToggleTimerIntent()) {
-                        Image(systemName: s.status == "running" ? "pause.fill" : "play.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                        Text(s.status == "running" ? "⏸" : "▶︎")
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(s.phaseColor)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
                     Button(intent: SkipTimerIntent()) {
-                        Image(systemName: "forward.end.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                        Text("⏭")
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
                 }
             }
+            HStack(spacing: 8) {
+                Text("今日 🍅×\(s.completed)")
+                Text("本月 🍅×\(s.completedMonth)")
+            }
+            .font(.system(size: 11, weight: .medium))
+            .monospacedDigit()
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.top, 3)
             Spacer(minLength: 0)
-            if s.status == "running", let end = s.endDate {
-                Text(timerInterval: Date()...max(Date(), end), countsDown: true)
-                    .font(.system(size: 32, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                Text("点击上方按钮可暂停/跳过")
+            if !s.connected {
+                Text("等待同步")
+                    .font(.system(size: 26, weight: .semibold))
+                Text("打开番茄时钟以连接小组件")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
+            } else if s.status == "running", let end = s.endDate {
+                if entry.date >= end {
+                    Text(s.phase == "focus" ? "专注已完成" : "休息已结束")
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .foregroundColor(s.phaseColor)
+                    Text("打开应用开始下一阶段")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                } else {
+                    Text(timerInterval: entry.date...end, countsDown: true)
+                        .font(.system(size: 32, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(.primary)
+                    Text("点击上方按钮可暂停/跳过")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
             } else if s.status == "paused" {
                 Text(s.clock)
                     .font(.system(size: 32, weight: .semibold, design: .rounded))
@@ -203,7 +251,7 @@ struct PomodoroTimerWidget: Widget {
             PomodoroWidgetView(entry: entry)
         }
         .configurationDisplayName("番茄时钟")
-        .description("显示当前番茄倒计时与今日完成数")
+        .description("显示番茄倒计时、今日和本月完成数")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

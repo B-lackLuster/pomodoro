@@ -44,6 +44,17 @@
    `applicationShouldTerminateAfterLastWindowClosed = true`，托盘应用必须改为
    `false`，退出统一走托盘菜单的 `exit(0)`。
 
+4. **桌面小组件停在 25:00**：macOS 15+ 会保护 App Group 目录。
+   本项目使用团队前缀容器 `5V582QBP6Q.com.tomatoclock.pomodoro.shared`，
+   主程序、小组件与三个 entitlements 必须保持一致。原先 `group.com...`
+   容器被系统拒绝读写时，小组件会一直显示默认值。更换签名团队时也要同步修改容器前缀。
+   Release 禁用自动注入基础 entitlements，使用团队前缀容器，不依赖短期开发配置文件。
+   小组件倒计时由 SwiftUI 原生计时文本刷新，状态变化才写文件并请求时间线刷新。
+   更新应用后若系统仍运行旧的小组件扩展，可移除并重新添加小组件。
+
+每日完成数默认在本地时间 04:00 更新，可在设置中调整。更新今日显示不会删除历史记录，
+跨日的番茄按完成时间归属日期。应用在边界时刻主动更新，并在休眠唤醒后补检。
+
 ## 目录结构
 
 ```
@@ -70,11 +81,18 @@ export PUB_HOSTED_URL=https://pub.flutter-io.cn
 
 flutter test                    # 引擎单元测试
 flutter run -d macos            # macOS 桌面版（需完整版 Xcode）
+flutter build macos --release   # 产物：build/macos/Build/Products/Release/pomodoro.app
 flutter run -d windows          # Windows 版（需在 Windows 机器上）
 flutter run -d web-server --web-port 8765   # web 预览（任意浏览器打开 127.0.0.1:8765）
 ```
 
 ## 已知事项
 
-- 本机暂无完整版 Xcode，macOS 原生构建待安装后进行（App Store 安装即可）
+- macOS 正式版与小组件已在本机使用 Xcode 构建验证；签名证书需与项目的开发团队一致。
 - web 预览初次加载时个别汉字短暂显示为方框，是 CanvasKit 在线字体未下载完成，桌面/移动端使用系统字体不受影响
+
+## 版本信息
+
+当前版本为 **1.1.0（构建 2）**，可在「设置 → 关于」查看安装包的实际版本。
+版本统一由 `pubspec.yaml` 的 `version` 定义；macOS 主程序和小组件使用同一版本。
+本次更新包含小组件实时同步、按钮下方今日/本月番茄数，以及凌晨 4 点跨日刷新修复。

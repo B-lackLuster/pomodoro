@@ -14,7 +14,8 @@ import '../platform/desktop.dart';
 
 /// 在 main() 中通过 ProviderScope overrides 注入
 final sharedPreferencesProvider = Provider<SharedPreferences>(
-  (ref) => throw UnimplementedError('必须在 main 中 override sharedPreferencesProvider'),
+  (ref) =>
+      throw UnimplementedError('必须在 main 中 override sharedPreferencesProvider'),
 );
 
 final settingsStoreProvider = Provider<SettingsStore>(
@@ -33,8 +34,9 @@ class DataVersionController extends Notifier<int> {
   void bump() => state++;
 }
 
-final dataVersionProvider =
-    NotifierProvider<DataVersionController, int>(DataVersionController.new);
+final dataVersionProvider = NotifierProvider<DataVersionController, int>(
+  DataVersionController.new,
+);
 
 /// 桌面平台能力（web 上为空实现）
 final desktopPlatformProvider = Provider<DesktopPlatform>(
@@ -48,7 +50,8 @@ final androidTimerServiceProvider = Provider<AndroidTimerService>(
 
 /// 在 main() 中注入初始设置（已含跨天清零处理）
 final initialSettingsProvider = Provider<StoredSettings>(
-  (ref) => throw UnimplementedError('必须在 main 中 override initialSettingsProvider'),
+  (ref) =>
+      throw UnimplementedError('必须在 main 中 override initialSettingsProvider'),
 );
 
 final engineProvider = Provider<PomodoroEngine>((ref) {
@@ -88,7 +91,33 @@ class SettingsController extends Notifier<StoredSettings> {
   }
 
   Future<void> setCompletedToday(int count) async {
-    state = state.copyWith(completedToday: count, day: SettingsStore.todayKey());
+    state = state.copyWith(
+      completedToday: count,
+      day: SettingsStore.todayKey(resetHour: state.dailyResetHour),
+    );
+    await _persist();
+  }
+
+  /// 跨天：今日计数清零（AppServices 周期检查触发）
+  Future<void> rolloverDay(String today) async {
+    state = state.copyWith(day: today, completedToday: 0);
+    await _persist();
+  }
+
+  Future<void> setDailyResetHour(int hour) async {
+    final resetHour = hour.clamp(0, 23);
+    final count = computeStats(
+      ref.read(appRepositoryProvider).logs(),
+      resetHour: resetHour,
+    ).todayCount;
+    state = state.copyWith(
+      dailyResetHour: resetHour,
+      day: SettingsStore.todayKey(resetHour: resetHour),
+      completedToday: count,
+    );
+    final engine = ref.read(engineProvider);
+    engine.updateDailyResetHour(resetHour);
+    engine.setCompletedFocusToday(count);
     await _persist();
   }
 
@@ -108,7 +137,10 @@ class SettingsController extends Notifier<StoredSettings> {
 
   /// 切换当前任务（完成番茄时记录归属）
   Future<void> setCurrentTask(String? taskId) async {
-    state = state.copyWith(currentTaskId: taskId, clearCurrentTask: taskId == null);
+    state = state.copyWith(
+      currentTaskId: taskId,
+      clearCurrentTask: taskId == null,
+    );
     await _persist();
   }
 
@@ -133,12 +165,14 @@ class TasksController extends Notifier<List<Task>> {
 
   Future<void> add(String title, int estimate) async {
     final repo = ref.read(appRepositoryProvider);
-    await repo.addTask(Task(
-      id: _newId(),
-      title: title.trim(),
-      estimate: estimate.clamp(1, 99),
-      createdAt: DateTime.now(),
-    ));
+    await repo.addTask(
+      Task(
+        id: _newId(),
+        title: title.trim(),
+        estimate: estimate.clamp(1, 99),
+        createdAt: DateTime.now(),
+      ),
+    );
     state = repo.tasks();
   }
 
@@ -164,8 +198,9 @@ class TasksController extends Notifier<List<Task>> {
   }
 }
 
-final tasksProvider =
-    NotifierProvider<TasksController, List<Task>>(TasksController.new);
+final tasksProvider = NotifierProvider<TasksController, List<Task>>(
+  TasksController.new,
+);
 
 /// 当前选中的任务对象（无则 null）
 final currentTaskProvider = Provider<Task?>((ref) {
@@ -177,7 +212,11 @@ final currentTaskProvider = Provider<Task?>((ref) {
 
 final statsProvider = Provider<StatsSummary>((ref) {
   ref.watch(dataVersionProvider);
-  return computeStats(ref.watch(appRepositoryProvider).logs());
+  ref.watch(settingsProvider.select((s) => s.day));
+  return computeStats(
+    ref.watch(appRepositoryProvider).logs(),
+    resetHour: ref.watch(settingsProvider).dailyResetHour,
+  );
 });
 
 class PomodoroController extends Notifier<PomodoroState> {
@@ -188,6 +227,7 @@ class PomodoroController extends Notifier<PomodoroState> {
     final engine = ref.watch(engineProvider);
     final settings = ref.watch(initialSettingsProvider);
     engine.updateConfig(settings.config);
+    engine.updateDailyResetHour(settings.dailyResetHour);
     engine.setCompletedFocusToday(settings.completedToday);
 
     _sub?.cancel();
@@ -212,8 +252,10 @@ class PomodoroController extends Notifier<PomodoroState> {
   void resetAll() => ref.read(engineProvider).resetAll();
 }
 
-final settingsProvider =
-    NotifierProvider<SettingsController, StoredSettings>(SettingsController.new);
+final settingsProvider = NotifierProvider<SettingsController, StoredSettings>(
+  SettingsController.new,
+);
 
-final pomodoroProvider =
-    NotifierProvider<PomodoroController, PomodoroState>(PomodoroController.new);
+final pomodoroProvider = NotifierProvider<PomodoroController, PomodoroState>(
+  PomodoroController.new,
+);

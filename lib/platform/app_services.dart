@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:math' show max;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
 import '../core/timer_engine.dart';
+import '../core/study_day.dart';
 import '../data/models.dart';
 import '../data/settings_store.dart';
+import '../data/stats_service.dart';
 import '../state/providers.dart';
 import 'android_service.dart';
 import 'desktop.dart';
@@ -27,19 +30,21 @@ class AppServices {
   StreamSubscription<PomodoroState>? _stateSub;
   StreamSubscription<PhaseCompletion>? _completionSub;
   ProviderSubscription<StoredSettings>? _settingsSub;
+  ProviderSubscription<StatsSummary>? _statsSub;
+  int _widgetMonthCount = 0;
 
   int _lastTraySecond = -1;
   PomodoroStatus? _prevStatus;
-  PomodoroPhase? _prevPhase;
+  String? _lastWidgetSignature;
+  String? _lastTrayTitle;
 
   late final AndroidTimerService _androidService;
   bool _androidForeground = false;
+  bool _androidReady = false;
 
   void _onTimerState(PomodoroState state) {
     final prevStatus = _prevStatus;
-    final prevPhase = _prevPhase;
     _prevStatus = state.status;
-    _prevPhase = state.phase;
 
     // 状态转换音效：开始（待开始→计时）、恢复（暂停→计时）、暂停（计时→暂停）
     if (state.isRunning && prevStatus != PomodoroStatus.running) {
@@ -54,24 +59,17 @@ class AppServices {
     }
 
     // 桌面小组件：阶段或状态变化时推送（倒计时由系统原生每秒自刷新）
-    if (state.phase != prevPhase || state.status != prevStatus) {
-      unawaited(_container?.read(desktopPlatformProvider).updateWidgetState({
-        'status': state.status.name,
-        'phase': state.phase.name,
-        'endAtMs': state.isRunning
-            ? DateTime.now().add(state.remaining).millisecondsSinceEpoch.toDouble()
-            : 0.0,
-        'remainSec': state.remaining.inSeconds,
-        'completed': state.completedFocusToday,
-      }));
-    }
+    _pushWidgetState(state);
 
-    final second = state.remaining.inSeconds;
-    if (second == _lastTraySecond) return;
+    final second = (state.remaining.inMilliseconds / 1000).ceil();
+    final secondChanged = second != _lastTraySecond;
     _lastTraySecond = second;
     final count = state.completedFocusToday;
     // 托盘图标本身是番茄，标题不再带 🍅 emoji，避免双番茄
     final title = count > 0 ? '×$count ${state.clockText}' : state.clockText;
+    final traySignature = '$title:${state.phase.name}:${state.status.name}';
+    if (_lastTrayTitle == traySignature && !secondChanged) return;
+    _lastTrayTitle = traySignature;
     _container
         ?.read(desktopPlatformProvider)
         .updateTrayCountdown(
@@ -84,7 +82,7 @@ class AppServices {
 
   /// Android 通知：运行中显示倒计时；空闲时收起服务
   void _updateAndroidNotification(PomodoroState state, int second) {
-    if (!_androidService.isAvailable) return;
+    if (!_androidReady || !_androidService.isAvailable) return;
     if (state.isRunning) {
       final title = '${state.clockText} · ${phaseLabel(state.phase)}';
       final text = state.isBreak
@@ -100,7 +98,10 @@ class AppServices {
       // 暂停或空闲：保持常驻但文案更新；空闲时彻底收起
       if (state.status == PomodoroStatus.paused) {
         _androidService.update(
-            title: '${state.clockText} · 已暂停', text: '点「继续」接着计时', running: false);
+          title: '${state.clockText} · 已暂停',
+          text: '点「继续」接着计时',
+          running: false,
+        );
       } else {
         _androidForeground = false;
         _androidService.stop();
@@ -115,11 +116,33 @@ class AppServices {
     _container = container;
     _sound.enabled = _settings.soundEnabled;
     _notify.enabled = _settings.notificationsEnabled;
+    _widgetMonthCount = container.read(statsProvider).monthCount;
+    _statsSub = container.listen<StatsSummary>(statsProvider, (_, next) {
+      _widgetMonthCount = next.monthCount;
+      _pushWidgetState(container.read(engineProvider).state);
+    });
 
+    // Core synchronization must be ready before optional plugins can block.
+    container.read(pomodoroProvider);
+    _androidService = container.read(androidTimerServiceProvider);
+    _completionSub = container
+        .read(engineProvider)
+        .completions
+        .listen(_onPhaseCompleted);
+    _stateSub = container.read(engineProvider).stream.listen(_onTimerState);
+    _checkDayRollover();
+    _pushWidgetState(container.read(engineProvider).state);
+    _scheduleDayRollover();
+    _rolloverWatchdog = Timer.periodic(const Duration(seconds: 15), (_) {
+      _checkDayRollover();
+    });
+
+    debugPrint('[init] stage: notify');
     // 每个平台服务独立兜底：任何一项失败都不影响应用其他功能
     try {
-      await _notify.init();
+      await _notify.init().timeout(const Duration(seconds: 3));
     } catch (_) {}
+    debugPrint('[init] stage: autostart');
 
     try {
       final desktop = container.read(desktopPlatformProvider);
@@ -127,7 +150,9 @@ class AppServices {
       // 开机自启：注册应用信息，并把持久化状态与系统真实状态对齐
       desktop.setupAutoStart(appName: 'pomodoro');
       if (desktop.isAvailable) {
-        final actual = await desktop.isAutoStartEnabled();
+        final actual = await desktop.isAutoStartEnabled().timeout(
+          const Duration(seconds: 3),
+        );
         if (actual != _settings.launchAtStartup) {
           await container
               .read(settingsProvider.notifier)
@@ -136,32 +161,37 @@ class AppServices {
       }
     } catch (_) {}
 
+    debugPrint('[init] stage: window');
     try {
       final desktop = container.read(desktopPlatformProvider);
-      await desktop.initWindow(
-        closeToTrayEnabled: () => _settings.closeToTray,
+      await desktop
+          .initWindow(closeToTrayEnabled: () => _settings.closeToTray)
+          .timeout(const Duration(seconds: 5));
+      debugPrint('[init] stage: window ok');
+      await desktop.initTray(
+        TrayActions(
+          onShow: showMainWindow,
+          onToggle: () => container.read(pomodoroProvider.notifier).toggle(),
+          onSkip: () => container.read(pomodoroProvider.notifier).skip(),
+          onQuit: quit,
+        ),
       );
-      await desktop.initTray(TrayActions(
-        onShow: showMainWindow,
-        onToggle: () => container.read(pomodoroProvider.notifier).toggle(),
-        onSkip: () => container.read(pomodoroProvider.notifier).skip(),
-        onQuit: quit,
-      ));
     } catch (_) {}
 
+    debugPrint('[init] stage: streams');
     // 阶段完成 → 提示音 + 系统通知（手动跳过不提醒）
-    _completionSub = container
-        .read(engineProvider)
-        .completions
-        .listen(_onPhaseCompleted);
 
     // Android：前台服务常驻通知（计时状态/秒数变化时更新）
-    _androidService = container.read(androidTimerServiceProvider);
-    await _androidService.init();
-    _androidService.onUserToggle =
-        () => container.read(pomodoroProvider.notifier).toggle();
-    _androidService.onUserSkip =
-        () => container.read(pomodoroProvider.notifier).skip();
+    try {
+      await _androidService.init().timeout(const Duration(seconds: 3));
+      _androidReady = true;
+    } catch (error) {
+      debugPrint('[android] Timer service initialization failed: $error');
+    }
+    _androidService.onUserToggle = () =>
+        container.read(pomodoroProvider.notifier).toggle();
+    _androidService.onUserSkip = () =>
+        container.read(pomodoroProvider.notifier).skip();
 
     // macOS：小组件按钮命令（Darwin 通知链路）
     container.read(desktopPlatformProvider).setWidgetCommandHandler((cmd) {
@@ -174,24 +204,26 @@ class AppServices {
     });
 
     // 计时状态 → 托盘倒计时文字 + Android 通知
-    _stateSub = container
-        .read(engineProvider)
-        .stream
-        .listen(_onTimerState);
 
     // 设置变化 → 同步服务开关
-    _settingsSub = container.listen<StoredSettings>(
-      settingsProvider,
-      (prev, next) {
-        _sound.enabled = next.soundEnabled;
-        _notify.enabled = next.notificationsEnabled;
-      },
-      fireImmediately: false,
-    );
+    _settingsSub = container.listen<StoredSettings>(settingsProvider, (
+      prev,
+      next,
+    ) {
+      _sound.enabled = next.soundEnabled;
+      _notify.enabled = next.notificationsEnabled;
+      if (prev?.dailyResetHour != next.dailyResetHour) {
+        _scheduleDayRollover();
+        _pushWidgetState(container.read(engineProvider).state);
+      }
+    }, fireImmediately: false);
 
+    debugPrint('[init] stage: tail');
     // 小组件在应用未运行时按下的积压命令，启动后执行
     unawaited(() async {
-      final cmd = await container.read(desktopPlatformProvider).takePendingWidgetCommand();
+      final cmd = await container
+          .read(desktopPlatformProvider)
+          .takePendingWidgetCommand();
       if (cmd == null) return;
       final notifier = container.read(pomodoroProvider.notifier);
       if (cmd == 'toggle') {
@@ -203,16 +235,67 @@ class AppServices {
 
     // 通道就绪后补推一次当前状态（启动时引擎先于托盘/小组件通道发状态，
     // 首次推送会被吞，这里兜底）
-    final engineState = container.read(engineProvider).state;
-    unawaited(container.read(desktopPlatformProvider).updateWidgetState({
-      'status': engineState.status.name,
-      'phase': engineState.phase.name,
-      'endAtMs': engineState.isRunning
-          ? DateTime.now().add(engineState.remaining).millisecondsSinceEpoch.toDouble()
-          : 0.0,
-      'remainSec': engineState.remaining.inSeconds,
-      'completed': engineState.completedFocusToday,
-    }));
+    _checkDayRollover();
+    _lastWidgetSignature = null;
+    _onTimerState(container.read(engineProvider).state);
+    _scheduleDayRollover();
+  }
+
+  Timer? _rolloverTimer;
+  Timer? _rolloverWatchdog;
+
+  void _scheduleDayRollover() {
+    _rolloverTimer?.cancel();
+    final now = DateTime.now();
+    final next = nextStudyDayBoundary(now, resetHour: _settings.dailyResetHour);
+    _rolloverTimer = Timer(next.difference(now), () {
+      _checkDayRollover();
+      _scheduleDayRollover();
+    });
+  }
+
+  void _pushWidgetState(PomodoroState state) {
+    final endAt = _container?.read(engineProvider).endAt;
+    final signature =
+        '${state.status.name}:${state.phase.name}:'
+        '${endAt?.millisecondsSinceEpoch}:${state.duration.inSeconds}:'
+        '${state.isRunning ? 0 : state.remaining.inMilliseconds}:'
+        '${state.completedFocusToday}:$_widgetMonthCount:'
+        '${_settings.day}:${_settings.dailyResetHour}';
+    if (signature == _lastWidgetSignature) return;
+    _lastWidgetSignature = signature;
+    unawaited(
+      _container?.read(desktopPlatformProvider).updateWidgetState({
+        'status': state.status.name,
+        'phase': state.phase.name,
+        'endAtMs': endAt?.millisecondsSinceEpoch.toDouble() ?? 0.0,
+        'remainSec': (state.remaining.inMilliseconds / 1000).ceil(),
+        'completed': state.completedFocusToday,
+        'completedMonth': _widgetMonthCount,
+        'day': _settings.day,
+        'dailyResetHour': _settings.dailyResetHour,
+      }),
+    );
+  }
+
+  /// 跨天（按每日重置时间偏移）：清零今日计数并同步小组件
+  void _checkDayRollover() {
+    final container = _container;
+    if (container == null) return;
+    final settings = container.read(settingsProvider);
+    final today = SettingsStore.todayKey(resetHour: settings.dailyResetHour);
+    if (settings.day == today) return;
+    final count = computeStats(
+      container.read(appRepositoryProvider).logs(),
+      resetHour: settings.dailyResetHour,
+    ).todayCount;
+    unawaited(
+      container.read(settingsProvider.notifier).setCompletedToday(count),
+    );
+    container.read(engineProvider).setCompletedFocusToday(count);
+    container.read(dataVersionProvider.notifier).bump();
+    _lastTraySecond = -1;
+    _pushWidgetState(container.read(engineProvider).state);
   }
 
   int _logSeq = 0;
@@ -241,9 +324,7 @@ class AppServices {
     final isFocus = completion.fromPhase == PomodoroPhase.focus;
     final log = PomodoroLog(
       id: '${completion.endedAt.microsecondsSinceEpoch}_${_logSeq++}',
-      taskId: isFocus
-          ? container.read(settingsProvider).currentTaskId
-          : null,
+      taskId: isFocus ? container.read(settingsProvider).currentTaskId : null,
       phase: completion.fromPhase,
       completed: !completion.manualSkip,
       start: completion.startedAt,
@@ -262,9 +343,12 @@ class AppServices {
   }
 
   void dispose() {
+    _rolloverTimer?.cancel();
+    _rolloverWatchdog?.cancel();
     _stateSub?.cancel();
     _completionSub?.cancel();
     _settingsSub?.close();
+    _statsSub?.close();
     _sound.dispose();
   }
 }

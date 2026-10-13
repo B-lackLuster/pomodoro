@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/models.dart';
+import '../core/study_day.dart';
 
 /// 持久化的应用设置（计时配置 + 主题 + 今日计数快照）
 class StoredSettings {
@@ -16,6 +17,7 @@ class StoredSettings {
     this.closeToTray = true,
     this.launchAtStartup = false,
     this.currentTaskId,
+    this.dailyResetHour = 4,
   });
 
   final PomodoroConfig config;
@@ -42,6 +44,10 @@ class StoredSettings {
   /// 当前选中的任务（完成番茄时记录归属），null = 未选择
   final String? currentTaskId;
 
+  /// 每日重置时间（0-23 时，0=0点）。跨天判断按此偏移，
+  /// 例如设为 4 时，凌晨 4 点前的完成数仍算前一天
+  final int dailyResetHour;
+
   StoredSettings copyWith({
     PomodoroConfig? config,
     String? themeMode,
@@ -53,6 +59,7 @@ class StoredSettings {
     bool? launchAtStartup,
     String? currentTaskId,
     bool clearCurrentTask = false,
+    int? dailyResetHour,
   }) {
     return StoredSettings(
       config: config ?? this.config,
@@ -63,37 +70,42 @@ class StoredSettings {
       soundEnabled: soundEnabled ?? this.soundEnabled,
       closeToTray: closeToTray ?? this.closeToTray,
       launchAtStartup: launchAtStartup ?? this.launchAtStartup,
-      currentTaskId:
-          clearCurrentTask ? null : (currentTaskId ?? this.currentTaskId),
+      currentTaskId: clearCurrentTask
+          ? null
+          : (currentTaskId ?? this.currentTaskId),
+      dailyResetHour: dailyResetHour ?? this.dailyResetHour,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'config': config.toJson(),
-        'themeMode': themeMode,
-        'day': day,
-        'completedToday': completedToday,
-        'notificationsEnabled': notificationsEnabled,
-        'soundEnabled': soundEnabled,
-        'closeToTray': closeToTray,
-        'launchAtStartup': launchAtStartup,
-        'currentTaskId': currentTaskId,
-      };
+    'config': config.toJson(),
+    'themeMode': themeMode,
+    'day': day,
+    'completedToday': completedToday,
+    'notificationsEnabled': notificationsEnabled,
+    'soundEnabled': soundEnabled,
+    'closeToTray': closeToTray,
+    'launchAtStartup': launchAtStartup,
+    'currentTaskId': currentTaskId,
+    'dailyResetHour': dailyResetHour,
+  };
 
   factory StoredSettings.fromJson(Map<String, dynamic> json) => StoredSettings(
-        config: json['config'] == null
-            ? const PomodoroConfig()
-            : PomodoroConfig.fromJson(
-                Map<String, dynamic>.from(json['config'] as Map)),
-        themeMode: json['themeMode'] as String? ?? 'system',
-        day: json['day'] as String? ?? '',
-        completedToday: json['completedToday'] as int? ?? 0,
-        notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
-        soundEnabled: json['soundEnabled'] as bool? ?? true,
-        closeToTray: json['closeToTray'] as bool? ?? true,
-        launchAtStartup: json['launchAtStartup'] as bool? ?? false,
-        currentTaskId: json['currentTaskId'] as String?,
-      );
+    config: json['config'] == null
+        ? const PomodoroConfig()
+        : PomodoroConfig.fromJson(
+            Map<String, dynamic>.from(json['config'] as Map),
+          ),
+    themeMode: json['themeMode'] as String? ?? 'system',
+    day: json['day'] as String? ?? '',
+    completedToday: json['completedToday'] as int? ?? 0,
+    notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
+    soundEnabled: json['soundEnabled'] as bool? ?? true,
+    closeToTray: json['closeToTray'] as bool? ?? true,
+    launchAtStartup: json['launchAtStartup'] as bool? ?? false,
+    currentTaskId: json['currentTaskId'] as String?,
+    dailyResetHour: (json['dailyResetHour'] as int? ?? 4).clamp(0, 23),
+  );
 }
 
 class SettingsStore {
@@ -106,16 +118,11 @@ class SettingsStore {
   StoredSettings load() {
     final raw = _prefs.getString(_storageKey);
     var settings = raw == null
-        ? StoredSettings(day: todayKey())
+        ? StoredSettings()
         : StoredSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    final today = todayKey();
+    final today = todayKey(resetHour: settings.dailyResetHour);
     if (settings.day != today) {
-      settings = StoredSettings(
-        config: settings.config,
-        themeMode: settings.themeMode,
-        day: today,
-        completedToday: 0,
-      );
+      settings = settings.copyWith(day: today, completedToday: 0);
       save(settings);
     }
     return settings;
@@ -125,10 +132,7 @@ class SettingsStore {
     await _prefs.setString(_storageKey, jsonEncode(settings.toJson()));
   }
 
-  static String todayKey() {
-    final n = DateTime.now();
-    return '${n.year.toString().padLeft(4, '0')}'
-        '-${n.month.toString().padLeft(2, '0')}'
-        '-${n.day.toString().padLeft(2, '0')}';
-  }
+  /// 今日日期键（按每日重置时间偏移：如 resetHour=4，凌晨4点前仍属前一天）
+  static String todayKey({int resetHour = 4, DateTime? now}) =>
+      studyDayKey(now ?? DateTime.now(), resetHour: resetHour);
 }

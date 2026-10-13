@@ -7,7 +7,11 @@ void main() {
   final today = DateTime(2026, 9, 6); // 周日
   DateTime day(int offset) => today.subtract(Duration(days: offset));
 
-  PomodoroLog focusLog(DateTime start, {int minutes = 25, bool completed = true}) {
+  PomodoroLog focusLog(
+    DateTime start, {
+    int minutes = 25,
+    bool completed = true,
+  }) {
     return PomodoroLog(
       id: 'log_${start.microsecondsSinceEpoch}',
       phase: PomodoroPhase.focus,
@@ -60,10 +64,7 @@ void main() {
     ];
     expect(computeStats(withToday, now: today).streakDays, 3);
 
-    final withoutToday = [
-      focusLog(day(1)),
-      focusLog(day(2)),
-    ];
+    final withoutToday = [focusLog(day(1)), focusLog(day(2))];
     expect(computeStats(withoutToday, now: today).streakDays, 2);
   });
 
@@ -76,5 +77,27 @@ void main() {
     expect(s.last7Days.last.count, 1);
     expect(s.last7Days.first.count, 1);
     expect(s.last7Days[3].count, 0);
+  });
+
+  test('四点前属于昨天，跨四点的番茄按完成时间算今天', () {
+    final logs = [
+      focusLog(DateTime(2026, 9, 6, 3)),
+      focusLog(DateTime(2026, 9, 6, 3, 50)),
+    ];
+    final before = computeStats(
+      logs.take(1).toList(),
+      now: DateTime(2026, 9, 6, 3, 59),
+      resetHour: 4,
+    );
+    expect(before.todayCount, 1);
+    final after = computeStats(
+      logs,
+      now: DateTime(2026, 9, 6, 4, 15),
+      resetHour: 4,
+    );
+    expect(after.todayCount, 1);
+    expect(after.last7Days[5].count, 1);
+    expect(after.last7Days.last.count, 1);
+    expect(after.totalCount, 2);
   });
 }

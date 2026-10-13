@@ -46,6 +46,7 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
   private var menu: NSMenu?
   private var hasMenu = false
+  private var widgetCommandsReady = false
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = StatusItemPlugin()
@@ -76,12 +77,13 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
   func handleDarwinNotification(rawName: String) {
     guard rawName == "com.tomatoclock.pomodoro.command" else { return }
     DispatchQueue.main.async { [weak self] in
-      guard let self, let cmd = StatusItemPlugin.takePendingCommand() else { return }
+      guard let self, self.widgetCommandsReady,
+            let cmd = StatusItemPlugin.takePendingCommand() else { return }
       self.channel?.invokeMethod("onWidgetCommand", arguments: cmd)
     }
   }
 
-  static let groupID = "group.com.tomatoclock.pomodoro"
+  static let groupID = "5V582QBP6Q.com.tomatoclock.pomodoro.shared"
 
   static var groupContainerURL: URL? {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
@@ -95,6 +97,10 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let cmd = obj["command"] as? String else { return nil }
     try? FileManager.default.removeItem(at: url)
+    // Ignore buttons pressed long before the app was launched.
+    guard let at = obj["at"] as? Double,
+          abs(Date().timeIntervalSince1970 - at) < 60,
+          ["toggle", "skip"].contains(cmd) else { return nil }
     return cmd
   }
 
@@ -136,6 +142,9 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
       result(true)
     case "takePendingCommand":
       result(StatusItemPlugin.takePendingCommand())
+    case "setWidgetCommandsReady":
+      widgetCommandsReady = call.arguments as? Bool ?? false
+      result(true)
     case "setWidgetState":
       // 桌面小组件：状态写 App Group 容器 JSON 文件（跨进程即时可见）并刷新时间线
       if let d = call.arguments as? [String: Any],
@@ -146,13 +155,22 @@ public class StatusItemPlugin: NSObject, FlutterPlugin {
           "endAtMs": d["endAtMs"] as? Double ?? 0,
           "remainSec": d["remainSec"] as? Int ?? 1500,
           "completed": d["completed"] as? Int ?? 0,
+          "completedMonth": d["completedMonth"] as? Int ?? 0,
+          "day": d["day"] as? String ?? "",
+          "dailyResetHour": d["dailyResetHour"] as? Int ?? 4,
           "updatedAt": Date().timeIntervalSince1970,
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted]) {
-          try? data.write(to: dir.appendingPathComponent("state.json"), options: .atomic)
+        do {
+          try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+          let data = try JSONSerialization.data(withJSONObject: state)
+          try data.write(to: dir.appendingPathComponent("state.json"), options: .atomic)
+          WidgetCenter.shared.reloadTimelines(ofKind: "com.tomatoclock.pomodoro.timer")
+          result(true)
+        } catch {
+          NSLog("[widget] Cannot write shared state: %@", error.localizedDescription)
+          result(FlutterError(code: "widget_state_write_failed",
+                              message: error.localizedDescription, details: nil))
         }
-        WidgetCenter.shared.reloadAllTimelines()
-        result(true)
       } else {
         result(false)
       }

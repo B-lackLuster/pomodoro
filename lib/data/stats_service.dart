@@ -1,5 +1,6 @@
 import '../core/models.dart';
 import 'models.dart';
+import '../core/study_day.dart';
 
 /// 统计汇总（纯函数计算，便于单测）
 class StatsSummary {
@@ -27,7 +28,11 @@ class StatsSummary {
 }
 
 class DailyCount {
-  const DailyCount({required this.day, required this.count, required this.minutes});
+  const DailyCount({
+    required this.day,
+    required this.count,
+    required this.minutes,
+  });
 
   /// 当天零点
   final DateTime day;
@@ -38,23 +43,26 @@ class DailyCount {
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
-StatsSummary computeStats(List<PomodoroLog> logs, {DateTime? now}) {
-  final ref = now ?? DateTime.now();
-  final today = DateTime(ref.year, ref.month, ref.day);
+StatsSummary computeStats(
+  List<PomodoroLog> logs, {
+  DateTime? now,
+  int resetHour = 0,
+}) {
+  final today = studyDay(now ?? DateTime.now(), resetHour: resetHour);
   final weekStart = today.subtract(Duration(days: today.weekday - 1)); // 周一
-  final monthStart = DateTime(ref.year, ref.month);
+  final monthStart = DateTime(today.year, today.month);
 
-  final focus = logs
-      .where((l) => l.phase == PomodoroPhase.focus && l.completed)
-      .toList()
-    ..sort((a, b) => a.start.compareTo(b.start));
+  final focus =
+      logs.where((l) => l.phase == PomodoroPhase.focus && l.completed).toList()
+        ..sort((a, b) => a.start.compareTo(b.start));
 
   var todayCount = 0, todayMinutes = 0;
   var weekCount = 0, monthCount = 0;
   final byDay = <DateTime, DailyCount>{};
 
   for (final l in focus) {
-    final start = DateTime(l.start.year, l.start.month, l.start.day);
+    // Completion time owns the tomato, matching the timer's daily counter.
+    final start = studyDay(l.end, resetHour: resetHour);
     final minutes = l.countedDuration.inMinutes;
 
     if (_sameDay(start, today)) {
@@ -79,7 +87,9 @@ StatsSummary computeStats(List<PomodoroLog> logs, {DateTime? now}) {
 
   // 连续打卡：从今天往前数；今天还没有完成则从昨天开始数
   var streak = 0;
-  var cursor = byDay.containsKey(today) ? today : today.subtract(const Duration(days: 1));
+  var cursor = byDay.containsKey(today)
+      ? today
+      : today.subtract(const Duration(days: 1));
   while (byDay.containsKey(cursor)) {
     streak += 1;
     cursor = cursor.subtract(const Duration(days: 1));
