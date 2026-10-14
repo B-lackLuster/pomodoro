@@ -30,6 +30,8 @@
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		AA000000000000000000000006 /* WidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000002 /* WidgetBundle.swift */; };
 		AA000000000000000000000007 /* pomodoroWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000005 /* pomodoroWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		AB000000000000000000000002 /* TimerIntents.swift in Runner Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000001 /* TimerIntents.swift */; };
+		AB000000000000000000000003 /* TimerIntents.swift in Widget Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000001 /* TimerIntents.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,6 +99,7 @@
 		AA000000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000000000000000000000004 /* Widget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Widget.entitlements; sourceTree = "<group>"; };
 		AA000000000000000000000005 /* pomodoroWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = pomodoroWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB000000000000000000000001 /* TimerIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerIntents.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -206,6 +209,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000000000002 /* WidgetBundle.swift */,
+				AB000000000000000000000001 /* TimerIntents.swift */,
 				AA000000000000000000000003 /* Info.plist */,
 				AA000000000000000000000004 /* Widget.entitlements */,
 			);
@@ -421,6 +425,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
+				AB000000000000000000000002 /* TimerIntents.swift in Runner Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
@@ -431,6 +436,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000000000000000000000006 /* WidgetBundle.swift in Sources */,
+				AB000000000000000000000003 /* TimerIntents.swift in Widget Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

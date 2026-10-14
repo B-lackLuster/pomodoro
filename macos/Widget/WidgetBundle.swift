@@ -6,42 +6,6 @@ import CoreFoundation
 private let groupContainerURL = FileManager.default.containerURL(
     forSecurityApplicationGroupIdentifier: "5V582QBP6Q.com.tomatoclock.pomodoro.shared")
 
-enum DarwinNotificationCenter {
-    static func post(_ name: String) {
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName(name as CFString), nil, nil, true)
-    }
-}
-
-/// 小组件按钮 → 写命令 → Darwin 通知唤醒应用执行
-private func writeCommand(_ cmd: String) {
-    guard let dir = groupContainerURL else { return }
-    let obj: [String: Any] = ["command": cmd, "at": Date().timeIntervalSince1970]
-    if let data = try? JSONSerialization.data(withJSONObject: obj) {
-        try? data.write(to: dir.appendingPathComponent("command.json"), options: .atomic)
-    }
-}
-struct ToggleTimerIntent: AppIntent {
-    static var title: LocalizedStringResource = "开始/暂停"
-    static var openAppWhenRun: Bool = true
-    func perform() async throws -> some IntentResult {
-        writeCommand("toggle")
-        DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
-        return .result()
-    }
-}
-
-struct SkipTimerIntent: AppIntent {
-    static var title: LocalizedStringResource = "跳过当前阶段"
-    static var openAppWhenRun: Bool = true
-    func perform() async throws -> some IntentResult {
-        writeCommand("skip")
-        DarwinNotificationCenter.post("com.tomatoclock.pomodoro.command")
-        return .result()
-    }
-}
-
 struct PomodoroState {
     var status: String   // idle / running / paused
     var phase: String    // focus / shortBreak / longBreak
