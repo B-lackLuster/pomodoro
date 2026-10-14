@@ -71,8 +71,9 @@ class _MiniModePageState extends ConsumerState<MiniModePage> {
       PomodoroPhase.shortBreak => _shortBreakPhrases,
       PomodoroPhase.longBreak => _longBreakPhrases,
     };
-    final phrase = phrases[
-        (pomo.focusInCycle * 3 + pomo.remaining.inMinutes) % phrases.length];
+    final phrase =
+        phrases[(pomo.focusInCycle * 3 + pomo.remaining.inMinutes) %
+            phrases.length];
 
     return Scaffold(
       backgroundColor: const Color(0xFF171012),
@@ -170,7 +171,7 @@ class _MiniModePageState extends ConsumerState<MiniModePage> {
                         ),
                         _MiniButton(
                           icon: Icons.skip_next_rounded,
-                          tooltip: '跳过',
+                          tooltip: pomo.isBreak ? '跳过休息' : '跳过专注（不计番茄）',
                           onTap: () =>
                               ref.read(pomodoroProvider.notifier).skip(),
                         ),

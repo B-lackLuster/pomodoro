@@ -130,6 +130,67 @@ void main() {
       expect(engine.state.completedFocusToday, 5);
     });
 
+    test('跳过长休后，再跳过未完成的专注，不会再次安排长休', () async {
+      for (var i = 0; i < 4; i++) {
+        engine.start();
+        advance(const Duration(minutes: 25));
+        if (i < 3) engine.skip();
+      }
+      expect(engine.state.phase, PomodoroPhase.longBreak);
+      engine.skip();
+      engine.start();
+      advance(const Duration(minutes: 16, seconds: 42));
+      final events = <PhaseCompletion>[];
+      final sub = engine.completions.listen(events.add);
+      engine.skip();
+      expect(engine.state.phase, PomodoroPhase.shortBreak);
+      expect(engine.state.completedFocusToday, 4);
+      expect(engine.state.focusInCycle, 4);
+      expect(engine.state.status, PomodoroStatus.idle);
+      await Future<void>.delayed(Duration.zero);
+      expect(events.single.manualSkip, true);
+      await sub.cancel();
+      engine.skip();
+      engine.start();
+      advance(const Duration(minutes: 25));
+      expect(engine.state.completedFocusToday, 5);
+      expect(engine.state.phase, PomodoroPhase.shortBreak);
+    });
+
+    test('跳过长休后，专注到期但心跳未刷新时点击跳过，仍结算番茄', () async {
+      for (var i = 0; i < 4; i++) {
+        engine.start();
+        advance(const Duration(minutes: 25));
+        if (i < 3) engine.skip();
+      }
+      engine.skip();
+      engine.start();
+      current = current.add(const Duration(minutes: 25));
+      final events = <PhaseCompletion>[];
+      final sub = engine.completions.listen(events.add);
+      engine.skip();
+      expect(engine.state.completedFocusToday, 5);
+      expect(engine.state.phase, PomodoroPhase.shortBreak);
+      expect(engine.state.isRunning, true);
+      await Future<void>.delayed(Duration.zero);
+      expect(events.single.manualSkip, false);
+      await sub.cancel();
+    });
+
+    test('自然结束长休后，跳过专注也不会重复安排长休', () {
+      for (var i = 0; i < 4; i++) {
+        engine.start();
+        advance(const Duration(minutes: 25));
+        if (i < 3) engine.skip();
+      }
+      advance(const Duration(minutes: 15));
+      engine.start();
+      advance(const Duration(minutes: 10));
+      engine.skip();
+      expect(engine.state.phase, PomodoroPhase.shortBreak);
+      expect(engine.state.completedFocusToday, 4);
+    });
+
     test('resetAll 回到专注并清空循环进度，保留今日计数', () {
       engine.start();
       advance(const Duration(minutes: 25));

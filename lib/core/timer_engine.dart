@@ -175,6 +175,11 @@ class PomodoroEngine {
   /// 跳过当前阶段。手动跳过的专注不计入完成数，也不会自动开始下一阶段。
   void skip() {
     _refreshDay();
+    // A button arriving after the deadline must not discard a finished phase.
+    if (_state.isRunning && _endAt != null && !_endAt!.isAfter(_now())) {
+      _advance(manualSkip: false);
+      return;
+    }
     _stopTicker();
     _endAt = null;
     _advance(manualSkip: true);
@@ -242,7 +247,10 @@ class PomodoroEngine {
 
     final PomodoroPhase next;
     if (wasFocus) {
-      next = inCycle > 0 && inCycle % _config.roundsBeforeLongBreak == 0
+      next =
+          !manualSkip &&
+              inCycle > 0 &&
+              inCycle % _config.roundsBeforeLongBreak == 0
           ? PomodoroPhase.longBreak
           : PomodoroPhase.shortBreak;
     } else {

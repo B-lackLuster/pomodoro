@@ -27,8 +27,8 @@ class TimerPage extends ConsumerWidget {
       PomodoroStatus.idle => '准备开始',
     };
 
-    void push(Widget page) => Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => page));
+    void push(Widget page) =>
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
 
     return Scaffold(
       appBar: AppBar(
@@ -48,8 +48,9 @@ class TimerPage extends ConsumerWidget {
             icon: const Icon(Icons.picture_in_picture_alt_outlined),
             tooltip: '迷你悬浮窗（置顶）',
             onPressed: miniModeSupported()
-                ? () => Navigator.of(context)
-                    .push(MaterialPageRoute(builder: (_) => const MiniModePage()))
+                ? () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const MiniModePage()),
+                  )
                 : null,
           ),
           IconButton(
@@ -144,7 +145,9 @@ class _PhaseBadge extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: Icon(
-              i < filled ? Icons.fiber_manual_record : Icons.fiber_manual_record_outlined,
+              i < filled
+                  ? Icons.fiber_manual_record
+                  : Icons.fiber_manual_record_outlined,
               size: 10,
               color: i < filled
                   ? phaseColor(PomodoroPhase.focus)
@@ -190,7 +193,7 @@ class _Controls extends ConsumerWidget {
         ),
         const SizedBox(width: 16),
         IconButton.outlined(
-          tooltip: '跳过当前阶段',
+          tooltip: pomo.isBreak ? '跳过休息' : '跳过专注（不计番茄）',
           onPressed: controller.skip,
           icon: const Icon(Icons.skip_next),
         ),
