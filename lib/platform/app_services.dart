@@ -326,7 +326,8 @@ class AppServices {
       id: '${completion.endedAt.microsecondsSinceEpoch}_${_logSeq++}',
       taskId: isFocus ? container.read(settingsProvider).currentTaskId : null,
       phase: completion.fromPhase,
-      completed: !completion.manualSkip,
+      completed: completion.completed,
+      activeSeconds: completion.activeDuration.inMicroseconds / 1000000,
       start: completion.startedAt,
       end: completion.endedAt,
     );

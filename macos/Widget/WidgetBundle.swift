@@ -137,7 +137,7 @@ struct PomodoroWidgetView: View {
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(s.phase == "focus" ? "跳过专注，不计番茄" : "跳过休息")
+                    .accessibilityLabel(s.phase == "focus" ? "跳过专注，实际专注超过一半计一个番茄" : "跳过休息")
                 }
             }
             HStack(spacing: 8) {

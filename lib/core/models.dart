@@ -9,10 +9,10 @@ enum PomodoroStatus { idle, running, paused }
 
 /// 阶段的中文显示名
 String phaseLabel(PomodoroPhase phase) => switch (phase) {
-      PomodoroPhase.focus => '专注',
-      PomodoroPhase.shortBreak => '短休息',
-      PomodoroPhase.longBreak => '长休息',
-    };
+  PomodoroPhase.focus => '专注',
+  PomodoroPhase.shortBreak => '短休息',
+  PomodoroPhase.longBreak => '长休息',
+};
 
 class PomodoroConfig {
   const PomodoroConfig({
@@ -29,7 +29,7 @@ class PomodoroConfig {
   final int shortBreakMinutes;
   final int longBreakMinutes;
 
-  /// 每完成几个专注番茄，进入一次长休息
+  /// 每连续完成几个有效番茄，进入一次长休息
   final int roundsBeforeLongBreak;
 
   final bool autoStartBreak;
@@ -53,7 +53,8 @@ class PomodoroConfig {
       focusMinutes: focusMinutes ?? this.focusMinutes,
       shortBreakMinutes: shortBreakMinutes ?? this.shortBreakMinutes,
       longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
-      roundsBeforeLongBreak: roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
+      roundsBeforeLongBreak:
+          roundsBeforeLongBreak ?? this.roundsBeforeLongBreak,
       autoStartBreak: autoStartBreak ?? this.autoStartBreak,
       autoStartFocus: autoStartFocus ?? this.autoStartFocus,
       dailyGoal: dailyGoal ?? this.dailyGoal,
@@ -61,24 +62,24 @@ class PomodoroConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'focusMinutes': focusMinutes,
-        'shortBreakMinutes': shortBreakMinutes,
-        'longBreakMinutes': longBreakMinutes,
-        'roundsBeforeLongBreak': roundsBeforeLongBreak,
-        'autoStartBreak': autoStartBreak,
-        'autoStartFocus': autoStartFocus,
-        'dailyGoal': dailyGoal,
-      };
+    'focusMinutes': focusMinutes,
+    'shortBreakMinutes': shortBreakMinutes,
+    'longBreakMinutes': longBreakMinutes,
+    'roundsBeforeLongBreak': roundsBeforeLongBreak,
+    'autoStartBreak': autoStartBreak,
+    'autoStartFocus': autoStartFocus,
+    'dailyGoal': dailyGoal,
+  };
 
   factory PomodoroConfig.fromJson(Map<String, dynamic> json) => PomodoroConfig(
-        focusMinutes: json['focusMinutes'] as int? ?? 25,
-        shortBreakMinutes: json['shortBreakMinutes'] as int? ?? 5,
-        longBreakMinutes: json['longBreakMinutes'] as int? ?? 15,
-        roundsBeforeLongBreak: json['roundsBeforeLongBreak'] as int? ?? 4,
-        autoStartBreak: json['autoStartBreak'] as bool? ?? true,
-        autoStartFocus: json['autoStartFocus'] as bool? ?? false,
-        dailyGoal: json['dailyGoal'] as int? ?? 8,
-      );
+    focusMinutes: json['focusMinutes'] as int? ?? 25,
+    shortBreakMinutes: json['shortBreakMinutes'] as int? ?? 5,
+    longBreakMinutes: json['longBreakMinutes'] as int? ?? 15,
+    roundsBeforeLongBreak: json['roundsBeforeLongBreak'] as int? ?? 4,
+    autoStartBreak: json['autoStartBreak'] as bool? ?? true,
+    autoStartFocus: json['autoStartFocus'] as bool? ?? false,
+    dailyGoal: json['dailyGoal'] as int? ?? 8,
+  );
 }
 
 class PomodoroState {
@@ -103,7 +104,7 @@ class PomodoroState {
   /// 今日完成的专注番茄数
   final int completedFocusToday;
 
-  /// 自上次 resetAll 以来的专注完成数，用于按模轮转长休息
+  /// 本轮连续完成的有效番茄数；长休后、专注未达标或停顿过长时清零。
   final int focusInCycle;
 
   bool get isBreak => phase != PomodoroPhase.focus;

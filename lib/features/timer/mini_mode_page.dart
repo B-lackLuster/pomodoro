@@ -171,7 +171,7 @@ class _MiniModePageState extends ConsumerState<MiniModePage> {
                         ),
                         _MiniButton(
                           icon: Icons.skip_next_rounded,
-                          tooltip: pomo.isBreak ? '跳过休息' : '跳过专注（不计番茄）',
+                          tooltip: pomo.isBreak ? '跳过休息' : '跳过专注（超过一半计1个番茄）',
                           onTap: () =>
                               ref.read(pomodoroProvider.notifier).skip(),
                         ),

@@ -125,9 +125,7 @@ class _PhaseBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filled = pomo.focusInCycle == 0
-        ? 0
-        : ((pomo.focusInCycle - 1) % config.roundsBeforeLongBreak) + 1;
+    final filled = pomo.focusInCycle.clamp(0, config.roundsBeforeLongBreak);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -154,6 +152,11 @@ class _PhaseBadge extends StatelessWidget {
                   : Theme.of(context).colorScheme.outlineVariant,
             ),
           ),
+        const SizedBox(width: 8),
+        Text(
+          '连续 $filled/${config.roundsBeforeLongBreak}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       ],
     );
   }
@@ -193,7 +196,7 @@ class _Controls extends ConsumerWidget {
         ),
         const SizedBox(width: 16),
         IconButton.outlined(
-          tooltip: pomo.isBreak ? '跳过休息' : '跳过专注（不计番茄）',
+          tooltip: pomo.isBreak ? '跳过休息' : '跳过专注（超过一半计1个番茄）',
           onPressed: controller.skip,
           icon: const Icon(Icons.skip_next),
         ),

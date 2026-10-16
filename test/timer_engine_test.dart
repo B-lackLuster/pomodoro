@@ -112,7 +112,7 @@ void main() {
       expect(engine.state.completedFocusToday, 1);
     });
 
-    test('长休息结束后循环继续，按模轮转', () {
+    test('长休息结束后重新累计连续进度，今日计数保留', () {
       for (var i = 0; i < 3; i++) {
         engine.start();
         advance(const Duration(minutes: 25));
@@ -126,7 +126,7 @@ void main() {
       engine.start();
       advance(const Duration(minutes: 25)); // 第 5 个完成 → 短休息
       expect(engine.state.phase, PomodoroPhase.shortBreak);
-      expect(engine.state.focusInCycle, 5);
+      expect(engine.state.focusInCycle, 1);
       expect(engine.state.completedFocusToday, 5);
     });
 
@@ -139,13 +139,13 @@ void main() {
       expect(engine.state.phase, PomodoroPhase.longBreak);
       engine.skip();
       engine.start();
-      advance(const Duration(minutes: 16, seconds: 42));
+      advance(const Duration(minutes: 10));
       final events = <PhaseCompletion>[];
       final sub = engine.completions.listen(events.add);
       engine.skip();
       expect(engine.state.phase, PomodoroPhase.shortBreak);
       expect(engine.state.completedFocusToday, 4);
-      expect(engine.state.focusInCycle, 4);
+      expect(engine.state.focusInCycle, 0);
       expect(engine.state.status, PomodoroStatus.idle);
       await Future<void>.delayed(Duration.zero);
       expect(events.single.manualSkip, true);

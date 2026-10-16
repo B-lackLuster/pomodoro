@@ -118,7 +118,7 @@ class SettingsPage extends ConsumerWidget {
                 notifier.updateConfig(config.copyWith(longBreakMinutes: v)),
           ),
           _NumberTile(
-            label: '长休息间隔（每几个番茄）',
+            label: '长休息间隔（连续番茄数）',
             value: config.roundsBeforeLongBreak,
             min: 2,
             max: 8,
@@ -135,6 +135,18 @@ class SettingsPage extends ConsumerWidget {
             step: 1,
             onChanged: (v) =>
                 notifier.updateConfig(config.copyWith(dailyGoal: v)),
+          ),
+          const _SectionHeader('计数与连续规则'),
+          const ListTile(
+            title: Text('专注过半后跳过，计 1 个番茄'),
+            subtitle: Text('按实际专注时间计算，不含暂停；恰好一半不计数。'),
+          ),
+          ListTile(
+            title: Text('连续 ${config.roundsBeforeLongBreak} 个番茄后长休'),
+            subtitle: Text(
+              '暂停、休息及等待超过 ${config.focusMinutes} 分钟，'
+              '或跳过未达标的专注，连续进度重新累计；今日计数保留。',
+            ),
           ),
           const _SectionHeader('自动化'),
           SwitchListTile(

@@ -12,6 +12,8 @@ class PhaseCompletion {
     required this.toPhase,
     required this.toDuration,
     required this.manualSkip,
+    required this.completed,
+    required this.activeDuration,
     required this.completedFocusToday,
     required this.startedAt,
     required this.endedAt,
@@ -23,6 +25,12 @@ class PhaseCompletion {
   /// 新阶段的总时长
   final Duration toDuration;
   final bool manualSkip;
+
+  /// 达到计数条件（含实际专注过半后跳过），与手动跳过的动作独立。
+  final bool completed;
+
+  /// 实际计时时长，扣除暂停与未开始的等待。
+  final Duration activeDuration;
   final int completedFocusToday;
 
   /// 被结束阶段的实际开始时刻（用于写入番茄记录）
@@ -69,7 +77,10 @@ class PomodoroEngine {
   final Duration tickInterval;
 
   Timer? _ticker;
+  Timer? _continuityTimer;
   DateTime? _endAt;
+  DateTime? _interruptionStartedAt;
+  Duration _interruptionLimit = const Duration(minutes: 25);
 
   /// 当前阶段开始计时的时刻（日志记录用；未运行时为 null）
   DateTime? _phaseStartedAt;
@@ -99,6 +110,53 @@ class PomodoroEngine {
   PomodoroConfig get config => _config;
   DateTime? get endAt => _endAt;
 
+  /// 休息、待开始和手动暂停均属于两段专注之间的停顿。
+  void _beginInterruption(DateTime at, Duration focusDuration) {
+    if (_interruptionStartedAt != null) return;
+    _interruptionStartedAt = at;
+    _interruptionLimit = focusDuration;
+    _continuityTimer?.cancel();
+    final deadline = at.add(focusDuration).add(const Duration(microseconds: 1));
+    final delay = deadline.difference(_now());
+    // Timer uses milliseconds; round up so strict "longer than" never fires early.
+    final delayMs = (delay.inMicroseconds / 1000).ceil();
+    _continuityTimer = Timer(
+      Duration(milliseconds: delayMs < 0 ? 0 : delayMs),
+      () {
+        if (_expireContinuity(_now())) _emit();
+      },
+    );
+  }
+
+  bool _expireContinuity(DateTime at) {
+    final interruption = _interruptionStartedAt;
+    if (interruption == null ||
+        at.difference(interruption) <= _interruptionLimit ||
+        _state.focusInCycle == 0) {
+      return false;
+    }
+    _state = _copyWith(focusInCycle: 0);
+    return true;
+  }
+
+  void _endInterruption() {
+    _continuityTimer?.cancel();
+    _continuityTimer = null;
+    _interruptionStartedAt = null;
+  }
+
+  Duration _remainingAt(DateTime at) {
+    final remaining = _state.isRunning && _endAt != null
+        ? _endAt!.difference(at)
+        : _state.remaining;
+    return Duration(
+      microseconds: remaining.inMicroseconds.clamp(
+        0,
+        _state.duration.inMicroseconds,
+      ),
+    );
+  }
+
   /// 更新配置。尚未开始时立即应用；运行或暂停的阶段保持不变，下一阶段生效。
   void updateConfig(PomodoroConfig config) {
     _config = config;
@@ -114,12 +172,14 @@ class PomodoroEngine {
 
   void start() {
     _refreshDay();
+    _expireContinuity(_now());
     if (_state.isRunning) return;
     final wasIdle = _state.status == PomodoroStatus.idle;
     final remaining = _state.status == PomodoroStatus.paused
         ? _state.remaining
         : _state.duration;
     if (remaining <= Duration.zero) return;
+    if (_state.phase == PomodoroPhase.focus) _endInterruption();
     _endAt = _now().add(remaining);
     if (wasIdle) _phaseStartedAt = _now();
     _state = _copyWith(status: PomodoroStatus.running, remaining: remaining);
@@ -143,21 +203,35 @@ class PomodoroEngine {
       status: PomodoroStatus.paused,
       remaining: remaining.isNegative ? Duration.zero : remaining,
     );
+    if (_state.phase == PomodoroPhase.focus) {
+      _beginInterruption(_now(), _state.duration);
+    }
     _emit();
   }
 
-  /// 重置当前阶段到初始时长（保留今日计数与循环进度）
+  /// 重置当前阶段到初始时长；重置专注会中断连续进度，保留今日计数。
   void resetPhase() {
+    final now = _now();
+    if (_state.phase == PomodoroPhase.focus) {
+      _beginInterruption(now, _state.duration);
+    }
+    _expireContinuity(now);
     _stopTicker();
     _endAt = null;
     _phaseStartedAt = null;
     final d = _durationOf(_state.phase);
-    _state = _copyWith(status: PomodoroStatus.idle, duration: d, remaining: d);
+    _state = _copyWith(
+      status: PomodoroStatus.idle,
+      duration: d,
+      remaining: d,
+      focusInCycle: _state.phase == PomodoroPhase.focus ? 0 : null,
+    );
     _emit();
   }
 
   /// 完全重置：回到专注阶段、清空循环进度（保留今日计数）
   void resetAll() {
+    _endInterruption();
     _stopTicker();
     _endAt = null;
     _phaseStartedAt = null;
@@ -172,7 +246,7 @@ class PomodoroEngine {
     _emit();
   }
 
-  /// 跳过当前阶段。手动跳过的专注不计入完成数，也不会自动开始下一阶段。
+  /// 跳过当前阶段。实际专注严格超过一半则计数；手动跳过不自动开始下一阶段。
   void skip() {
     _refreshDay();
     // A button arriving after the deadline must not discard a finished phase.
@@ -181,7 +255,6 @@ class PomodoroEngine {
       return;
     }
     _stopTicker();
-    _endAt = null;
     _advance(manualSkip: true);
   }
 
@@ -216,6 +289,7 @@ class PomodoroEngine {
 
   void _onTick() {
     _refreshDay();
+    if (_expireContinuity(_now())) _emit();
     if (!_state.isRunning || _endAt == null) return;
     final remaining = _endAt!.difference(_now());
     if (remaining <= Duration.zero) {
@@ -233,24 +307,38 @@ class PomodoroEngine {
   void _advance({required bool manualSkip}) {
     _stopTicker();
     final endedAt = manualSkip ? _now() : (_endAt ?? _now());
+    _expireContinuity(endedAt);
     final startedAt = _phaseStartedAt ?? endedAt;
     final fromPhase = _state.phase;
     final wasFocus = fromPhase == PomodoroPhase.focus;
+    final activeDuration = _phaseStartedAt == null
+        ? Duration.zero
+        : _state.duration - _remainingAt(endedAt);
+    final completedPhase =
+        !manualSkip ||
+        (wasFocus &&
+            activeDuration.inMicroseconds * 2 > _state.duration.inMicroseconds);
     var completed = _state.completedFocusToday;
     var inCycle = _state.focusInCycle;
-    if (wasFocus && !manualSkip) {
+    if (wasFocus && completedPhase) {
       if (studyDayKey(endedAt, resetHour: _dailyResetHour) == _day) {
         completed += 1;
       }
       inCycle += 1;
+    } else if (wasFocus) {
+      inCycle = 0;
+    } else if (fromPhase == PomodoroPhase.longBreak) {
+      // 一轮长休（包括跳过）结束后，开始新一轮连续专注。
+      inCycle = 0;
     }
+    if (wasFocus) _beginInterruption(endedAt, _state.duration);
 
     final PomodoroPhase next;
     if (wasFocus) {
       next =
-          !manualSkip &&
+          completedPhase &&
               inCycle > 0 &&
-              inCycle % _config.roundsBeforeLongBreak == 0
+              inCycle >= _config.roundsBeforeLongBreak
           ? PomodoroPhase.longBreak
           : PomodoroPhase.shortBreak;
     } else {
@@ -274,6 +362,7 @@ class PomodoroEngine {
     );
 
     if (autoStart) {
+      if (next == PomodoroPhase.focus) _endInterruption();
       _endAt = _now().add(duration);
       _phaseStartedAt = _now();
       _startTicker();
@@ -288,6 +377,8 @@ class PomodoroEngine {
         toPhase: next,
         toDuration: duration,
         manualSkip: manualSkip,
+        completed: completedPhase,
+        activeDuration: activeDuration,
         completedFocusToday: completed,
         startedAt: startedAt,
         endedAt: endedAt,
@@ -319,6 +410,7 @@ class PomodoroEngine {
   }
 
   void dispose() {
+    _endInterruption();
     _stopTicker();
     _controller.close();
     _completionsController.close();
